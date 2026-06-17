@@ -23,7 +23,7 @@ from uuid import UUID
 from typing import List
 from datetime import datetime, timezone
 
-from app.database import get_db # database session dependency
+from ledger.api.database import get_db # database session dependency
 from ledger.api.models.models import Proposal, Ballot, BillSection
 from ledger.api.schemas.schemas import ProposalCreate, ProposalResponse, VoteCast, VoteResponse
 

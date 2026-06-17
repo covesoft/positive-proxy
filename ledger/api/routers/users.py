@@ -29,6 +29,7 @@ from ledger.api.database import get_db
 from ledger.api.models.models import User, Proxy, UserStatusLog
 from ledger.api.schemas.schemas import UserCreate, UserResponse, ProxyCreate, ProxyResponse
 from ledger.api.services.governance import get_pending_action_items
+from ledger.api.services.notification import check_proxy_action_alerts
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -102,5 +103,14 @@ async def read_pending_actions(user_id: UUID, db: AsyncSession = Depends(get_db)
     (e.g., active bills where neither they nor their proxies have voted).
     """
     return await get_pending_action_items(db, user_id)
+
+
+@router.get("/{user_id}/alerts", response_model=list[dict])
+async def read_user_alerts(user_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Returns live push alerts informing the citizen if their proxy has voted, 
+    allowing them to dynamically track and potentially override decisions.
+    """
+    return await check_proxy_action_alerts(db, user_id)
 
 ### EOF: /positive-proxy/ledger/api/routers/users.py ###
