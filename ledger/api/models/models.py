@@ -1,4 +1,4 @@
-### file: /positive-proxy/back_ledger/api/models/models.py
+### file: /positive-proxy/ledger/api/models/models.py
 copyright = """
     Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
     Copyright (C) 2026  Joel Spector
@@ -16,38 +16,48 @@ copyright = """
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>."""
 
-
-
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
-from uuid import UUID, uuid4
+from uuid import UUID
+import uuid_utils as uuid7  # Run `pip install uuid-utils` for high-performance UUIDv7 generation
+
 from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, Integer, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
-
 class Base(DeclarativeBase):
     pass
+
 
 # 1. USERS TABLE
 class User(Base):
     __tablename__ = "users"
     __table_args__ = {"schema": "positive_proxy"}
 
-    user_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7.uuid7)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    status_logs: Mapped[List["UserStatusLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    created_issues: Mapped[List["Issue"]] = relationship(back_populates="creator")
+    proposals: Mapped[List["Proposal"]] = relationship(back_populates="author")
+    ballots: Mapped[List["Ballot"]] = relationship(back_populates="voter")
+
 
 # 1.1 USER STATUS LOG
 class UserStatusLog(Base):
     __tablename__ = "user_status_log"
     __table_args__ = {"schema": "positive_proxy"}
 
-    log_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
+    log_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7.uuid7)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id", ondelete="CASCADE"))
     status_changed_to: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="status_logs")
 
 
 # 2. ISSUES DATABASE
@@ -55,11 +65,18 @@ class Issue(Base):
     __tablename__ = "issues"
     __table_args__ = {"schema": "positive_proxy"}
 
-    issue_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    issue_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7.uuid7)
     creator_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str] = mapped_column(String(1024), nullable=False)  # Bamped to 1024 characters
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    creator: Mapped["User"] = relationship(back_populates="created_issues")
+    proposals: Mapped[List["Proposal"]] = relationship(
+        secondary="positive_proxy.proposal_issues", back_populates="issues"
+    )
+
 
 # 2.1 PROPOSAL ISSUES (Many-to-Many Junction Table)
 class ProposalIssue(Base):
@@ -84,18 +101,24 @@ class Proposal(Base):
         {"schema": "positive_proxy"}
     )
 
-    proposal_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    proposal_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7.uuid7)
     parent_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("positive_proxy.proposals.proposal_id"), nullable=True)
     author_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str] = mapped_column(String(1024), nullable=False)  # Bamped to 1024 characters
     status: Mapped[str] = mapped_column(String(50), default="draft")
     declared_bill_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
+    author: Mapped["User"] = relationship(back_populates="proposals")
     children: Mapped[List["Proposal"]] = relationship("Proposal", back_populates="parent")
     parent: Mapped[Optional["Proposal"]] = relationship("Proposal", back_populates="children", remote_side=[proposal_id])
-
+    
+    issues: Mapped[List["Issue"]] = relationship(
+        secondary="positive_proxy.proposal_issues", back_populates="proposals"
+    )
+    sections: Mapped[List["BillSection"]] = relationship(back_populates="proposal", cascade="all, delete-orphan")
+    ballots: Mapped[List["Ballot"]] = relationship(back_populates="proposal", cascade="all, delete-orphan")
 
 
 # 4. LINE-ITEM BILL SECTIONS (Git-like evolution)
@@ -103,7 +126,7 @@ class BillSection(Base):
     __tablename__ = "bill_sections"
     __table_args__ = {"schema": "positive_proxy"}
 
-    section_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    section_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7.uuid7)
     proposal_id: Mapped[UUID] = mapped_column(
         ForeignKey("positive_proxy.proposals.proposal_id", ondelete="CASCADE")
     )
@@ -112,7 +135,10 @@ class BillSection(Base):
     version_hash: Mapped[str] = mapped_column(String(64), nullable=False) # SHA-256
     updated_by: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
     parent_section_id: Mapped[Optional[UUID]] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    proposal: Mapped["Proposal"] = relationship(back_populates="sections")
 
 
 # 5. PROXIES TABLE (Handles Global or Per-Bill delegation)
@@ -120,14 +146,14 @@ class Proxy(Base):
     __tablename__ = "proxies"
     __table_args__ = {"schema": "positive_proxy"}
 
-    proxy_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    proxy_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7.uuid7)
     grantor_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
     proxy_to_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
     proposal_id: Mapped[Optional[UUID]] = mapped_column(
-        ForeignKey("positive_proxy.proposals.proposal_id"), nullable=True
+        ForeignKey("positive_proxy.proposals.proposal_id", ondelete="CASCADE"), nullable=True
     ) # NULL implies a Global Fallback proxy
     is_transferable: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -140,10 +166,14 @@ class Ballot(Base):
         {"schema": "positive_proxy"}
     )
 
-    ballot_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    proposal_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.proposals.proposal_id"))
+    ballot_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7.uuid7)
+    proposal_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.proposals.proposal_id", ondelete="CASCADE"))
     voter_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
     vote_choice: Mapped[str] = mapped_column(String(10))
-    cast_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    cast_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-### EOF: /positive-proxy/back_ledger/api/models/models.py ###
+    # Relationships
+    proposal: Mapped["Proposal"] = relationship(back_populates="ballots")
+    voter: Mapped["User"] = relationship(back_populates="ballots")
+
+### EOF: /positive-proxy/ledger/api/models/models.py ###
