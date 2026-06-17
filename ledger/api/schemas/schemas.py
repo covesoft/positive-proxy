@@ -1,4 +1,4 @@
-### file: /positive-proxy/back_ledger/api/schemas/schemas.py
+# file: /positive-proxy/ledger/api/schemas/schemas.py
 copyright = """
     Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
     Copyright (C) 2026  Joel Spector
@@ -15,8 +15,6 @@ copyright = """
 
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>."""
-
-
 
 from pydantic import BaseModel, Field
 from uuid import UUID
@@ -67,6 +65,59 @@ class VoteResponse(BaseModel):
     voter_id: UUID
     vote_choice: str
     cast_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- ISSUE SCHEMAS ---
+class IssueCreate(BaseModel):
+    creator_id: UUID
+    title: str = Field(..., max_length=1024)
+    description: str
+
+class IssueResponse(BaseModel):
+    issue_id: UUID
+    creator_id: UUID
+    title: str
+    description: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- BILL SECTION SCHEMAS ---
+class BillSectionCreate(BaseModel):
+    section_number: int
+    content: str
+    updated_by: UUID
+    parent_section_id: Optional[UUID] = None
+
+class BillSectionResponse(BaseModel):
+    section_id: UUID
+    proposal_id: UUID
+    section_number: int
+    content: str
+    version_hash: str
+    updated_by: UUID
+    parent_section_id: Optional[UUID]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- PROPOSAL SCHEMAS ---
+class ProposalCreate(BaseModel):
+    author_id: UUID
+    title: str = Field(..., max_length=1024)
+
+class ProposalResponse(BaseModel):
+    proposal_id: UUID
+    parent_id: Optional[UUID]
+    author_id: UUID
+    title: str
+    status: str
+    declared_bill_at: Optional[datetime]
+    created_at: datetime
 
     class Config:
         from_attributes = True

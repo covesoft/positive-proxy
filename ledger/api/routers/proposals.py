@@ -16,13 +16,37 @@ copyright = """
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from sqlalchemy import text, select
 from uuid import UUID
-from app.database import get_db # Your database session dependency
+from typing import List
+from datetime import datetime, timezone
+
+from app.database import get_db # database session dependency
+from ledger.api.models.models import Proposal, Ballot, BillSection
+from ledger.api.schemas.schemas import ProposalCreate, ProposalResponse, VoteCast, VoteResponse
+
+
 
 router = APIRouter(prefix="/proposals", tags=["proposals"])
+
+
+@router.post("/", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
+async def create_proposal(proposal_data: ProposalCreate, db: AsyncSession = Depends(get_db)):
+    """
+    Draft a completely new policy proposal or bill from scratch.
+    """
+    new_proposal = Proposal(
+        title=proposal_data.title,
+        author_id=proposal_data.author_id,
+        status="draft"
+    )
+    db.add(new_proposal)
+    await db.commit()
+    await db.refresh(new_proposal)
+    return new_proposal
+
 
 @router.get("/{proposal_id}/trace/{user_id}")
 async def trace_vote(proposal_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db)):
@@ -51,4 +75,54 @@ async def trace_vote(proposal_id: UUID, user_id: UUID, db: AsyncSession = Depend
         })
         
     return {"proposal_id": proposal_id, "origin_voter_id": user_id, "chain": chain}
+
+
+
+@router.post("/{parent_id}/fork", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
+async def fork_proposal(parent_id: UUID, author_id: UUID, fork_title: str, db: AsyncSession = Depends(get_db)):
+    """
+    Supports git-like branching. Fork an existing proposal/bill to modify its trajectory
+    or offer a competing version while maintaining historical lineage.
+    """
+    parent = await db.get(Proposal, parent_id)
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent proposal not found")
+        
+    forked_proposal = Proposal(
+        parent_id=parent_id,
+        author_id=author_id,
+        title=fork_title,
+        status="draft"
+    )
+    db.add(forked_proposal)
+    await db.commit()
+    await db.refresh(forked_proposal)
+    return forked_proposal
+
+
+
+@router.post("/vote", response_model=VoteResponse, status_code=status.HTTP_201_CREATED)
+async def cast_ballot(vote_data: VoteCast, voter_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Cast a direct vote ('yea', 'nay', 'abstain') on a specific proposal.
+    Triggers unique constraint check if the voter already cast a ballot here.
+    """
+    # 1. Check if user already voted directly
+    existing_ballot = await db.execute(
+        select(Ballot).where(Ballot.proposal_id == vote_data.proposal_id, Ballot.voter_id == voter_id)
+    )
+    if existing_ballot.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Voter has already cast a direct ballot on this proposal")
+
+    # 2. Add the ballot record
+    new_ballot = Ballot(
+        proposal_id=vote_data.proposal_id,
+        voter_id=voter_id,
+        vote_choice=vote_data.vote_choice
+    )
+    db.add(new_ballot)
+    await db.commit()
+    await db.refresh(new_ballot)
+    return new_ballot
+
 ### EOF: /positive-proxy/ledger/api/routers/proposals.py ###
