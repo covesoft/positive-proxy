@@ -21,7 +21,7 @@ copyright = """
 #Python Engine (SQLAlchemy Core / Psycopg3)
 #This Python module handles database operations,
 #  counts real-time active electorate weights,
-#  and enforces Joel’s dynamic Oligarchy Cap (e.g., 5% municipal limit).
+#  and enforces a dynamic Oligarchy Cap (e.g., 5% municipal limit).
 
 import hashlib
 from psycopg import connect
@@ -145,4 +145,5 @@ def calculate_bill_tally(proposal_id: str):
                     results["uncast"] += 1
             
             return results
+
 ### EOF: /positive-proxy/ledger/engine.py ###

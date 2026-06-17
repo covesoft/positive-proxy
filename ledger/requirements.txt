@@ -1,6 +1,6 @@
 fastapi[all]
 sqlalchemy>=2.0.0
-asyncpg
-psycopg2-binary
+asyncpg               # This is our async database driver
 pydantic>=2.0
-uuid-utils
+pydantic-settings     # For handling the .env file effortlessly
+uuid-utils            # For our fast UUIDv7 keys
