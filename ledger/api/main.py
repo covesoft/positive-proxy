@@ -19,7 +19,7 @@ copyright = """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ledger.api.routers import users, proposals
+from ledger.api.routers import users, proposals, audit
 
 # 1. Initialize the FastAPI Application instance
 app = FastAPI(
@@ -40,6 +40,7 @@ app.add_middleware(
 # 3. Mount the Core Architecture Pipelines
 app.include_router(users.router)
 app.include_router(proposals.router)
+app.include_router(audit.router)
 
 # 4. Root Health Check Endpoint
 @app.get("/", tags=["system"])

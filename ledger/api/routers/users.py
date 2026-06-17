@@ -1,4 +1,4 @@
-### File: /positive-proxy/ledger/api/routers/users.py
+# File: /positive-proxy/ledger/api/routers/users.py
 copyright = """
     Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
     Copyright (C) 2026  Joel Spector
@@ -16,20 +16,19 @@ copyright = """
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>."""
 
-# Here is the implementation for routers/users.py to handle citizens,
-#  status logging, and setting up proxies.
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from uuid import UUID
-from typing import List
+from datetime import datetime, timezone
+
+# Database connection dependency
+from ledger.api.database import get_db
 
 # Pydantic schemas and SQLAlchemy models
 from ledger.api.models.models import User, Proxy, UserStatusLog
 from ledger.api.schemas.schemas import UserCreate, UserResponse, ProxyCreate, ProxyResponse
-
-#import get_db
+from ledger.api.services.governance import get_pending_action_items
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -80,7 +79,6 @@ async def assign_proxy(user_id: UUID, proxy_data: ProxyCreate, db: AsyncSession 
     active_proxy = existing_proxy_result.scalar_one_or_none()
     
     if active_proxy:
-        from datetime import datetime, timezone
         active_proxy.revoked_at = datetime.now(timezone.utc)
 
     # 5. Create new proxy mapping
@@ -97,8 +95,6 @@ async def assign_proxy(user_id: UUID, proxy_data: ProxyCreate, db: AsyncSession 
     return new_proxy
 
 
-from ledger.api.services.governance import get_pending_action_items
-
 @router.get("/{user_id}/pending-actions", response_model=list[dict])
 async def read_pending_actions(user_id: UUID, db: AsyncSession = Depends(get_db)):
     """
@@ -106,4 +102,5 @@ async def read_pending_actions(user_id: UUID, db: AsyncSession = Depends(get_db)
     (e.g., active bills where neither they nor their proxies have voted).
     """
     return await get_pending_action_items(db, user_id)
+
 ### EOF: /positive-proxy/ledger/api/routers/users.py ###
