@@ -165,3 +165,43 @@ BEGIN
     ORDER BY dc.depth ASC;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+
+
+-- =========================================================================
+-- PRIVACY-SAFE UPWARD PROXY WEIGHT COUNTING FUNCTION
+-- =========================================================================
+CREATE OR REPLACE FUNCTION positive_proxy.get_proxy_volume(target_user_id UUID, target_proposal_id UUID)
+RETURNS TABLE (ballot_volume BIGINT) AS $$
+BEGIN
+    RETURN QUERY
+    WITH RECURSIVE upward_influence AS (
+        -- Base Case: Find citizens who directly delegated their proxy to this target user
+        -- Ensure the delegation is active (revoked_at IS NULL)
+        SELECT 
+            p.grantor_id,
+            p.is_transferable
+        FROM positive_proxy.proxies p
+        WHERE p.proxy_to_id = target_user_id 
+          AND p.revoked_at IS NULL
+          AND (p.proposal_id = target_proposal_id OR p.proposal_id IS NULL)
+
+        UNION ALL
+
+        -- Recursive Step: Find citizens who delegated to the people who delegated to this target user
+        -- Only proceed if the downstream link explicitly marked the proxy as transferable
+        SELECT 
+            p.grantor_id,
+            p.is_transferable
+        FROM positive_proxy.proxies p
+        JOIN upward_influence ui ON p.proxy_to_id = ui.grantor_id
+        WHERE ui.is_transferable = TRUE
+          AND p.revoked_at IS NULL
+          AND (p.proposal_id = target_proposal_id OR p.proposal_id IS NULL)
+    )
+    -- Select ONLY the aggregate count (+1 includes the representative's own vote)
+    -- This strips away individual user_ids, maintaining strict upward anonymity
+    SELECT COUNT(*) + 1 AS total_weight FROM upward_influence;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

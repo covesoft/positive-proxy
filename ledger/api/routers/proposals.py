@@ -125,4 +125,36 @@ async def cast_ballot(vote_data: VoteCast, voter_id: UUID, db: AsyncSession = De
     await db.refresh(new_ballot)
     return new_ballot
 
+
+
+from sqlalchemy import text
+from ledger.api.services.governance import get_voter_turnout
+
+@router.get("/{proposal_id}/turnout")
+async def read_proposal_turnout(proposal_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Get total active electorate count, total cast ballots, and raw turnout percentage.
+    """
+    return await get_voter_turnout(db, proposal_id)
+
+
+@router.get("/{proposal_id}/proxy-volume/{user_id}")
+async def read_proxy_volume(proposal_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Returns the total numeric volume of ballots a representative controls for a bill.
+    Strictly anonymous: yields only a number, hiding upstream voter identities.
+    """
+    query = text("""
+        SELECT ballot_volume 
+        FROM positive_proxy.get_proxy_volume(:user_id, :proposal_id);
+    """)
+    result = await db.execute(query, {"user_id": user_id, "proposal_id": proposal_id})
+    row = result.fetchone()
+    
+    return {
+        "proposal_id": proposal_id,
+        "representative_id": user_id,
+        "ballot_volume": row[0] if row else 1  # Minimum 1 (includes their own vote)
+    }
+
 ### EOF: /positive-proxy/ledger/api/routers/proposals.py ###

@@ -95,4 +95,15 @@ async def assign_proxy(user_id: UUID, proxy_data: ProxyCreate, db: AsyncSession 
     await db.commit()
     await db.refresh(new_proxy)
     return new_proxy
+
+
+from ledger.api.services.governance import get_pending_action_items
+
+@router.get("/{user_id}/pending-actions", response_model=list[dict])
+async def read_pending_actions(user_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Returns critical or informational items requiring the citizen's attention 
+    (e.g., active bills where neither they nor their proxies have voted).
+    """
+    return await get_pending_action_items(db, user_id)
 ### EOF: /positive-proxy/ledger/api/routers/users.py ###
