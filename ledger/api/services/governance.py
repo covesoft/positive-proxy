@@ -155,4 +155,98 @@ async def calculate_bill_tally(db: AsyncSession, proposal_id: UUID) -> dict:
             
     return results
 
+async def get_voter_turnout(db: AsyncSession, proposal_id: UUID) -> dict:
+    """
+    Calculates the absolute democratic legitimacy of a proposal by evaluating 
+    voter turnout across the entire active electorate (direct + proxied).
+    """
+    # 1. Get total active electorate count
+    total_query = select(func.count()).select_from(User).where(User.is_active == True)
+    total_result = await db.execute(total_query)
+    total_electorate = total_result.scalar_one() or 0
+    
+    if total_electorate == 0:
+        return {"total_electorate": 0, "cast_ballots": 0, "turnout_percentage": 0.0}
+
+    # 2. Leverage our tally function calculation to find cast vs uncast breakdown
+    tally_results = await calculate_bill_tally(db, proposal_id)
+    
+    cast_ballots = tally_results["yea"] + tally_results["nay"] + tally_results["abstain"]
+    turnout_percentage = round((cast_ballots / total_electorate) * 100, 2)
+    
+    return {
+        "total_electorate": total_electorate,
+        "cast_ballots": cast_ballots,
+        "turnout_percentage": turnout_percentage
+    }
+
+# No 'from typing import List' needed at all if written this way!
+async def get_pending_action_items(db: AsyncSession, user_id: UUID) -> list[dict]:
+    """
+    Scans all active bills and identifies which ones require user attention.
+    Alerts the citizen if they haven't voted AND their proxy chain hasn't acted yet.
+    """
+    # 1. Get all active bills
+    bills_query = select(Proposal).where(Proposal.status == "bill")
+    bills_result = await db.execute(bills_query)
+    active_bills = bills_result.scalars().all()
+    
+    pending_items = []
+    
+    # 2. Trace the proxy chain logic statement per active bill
+    action_check_query = text("""
+        WITH RECURSIVE proxy_chain AS (
+            SELECT :voter_id AS current_voter, 0 AS depth, ARRAY[:voter_id::uuid] AS path, TRUE AS transferable
+            
+            UNION ALL
+            
+            SELECT p.proxy_to_id, pc.depth + 1, pc.path || p.proxy_to_id, p.is_transferable
+            FROM proxy_chain pc
+            JOIN positive_proxy.proxies p ON pc.current_voter = p.grantor_id
+            WHERE p.revoked_at IS NULL 
+              AND pc.transferable = TRUE
+              AND (p.proposal_id = :proposal_id OR p.proposal_id IS NULL)
+              AND NOT (p.proxy_to_id = ANY(pc.path))
+        )
+        SELECT 
+            -- Did the user vote themselves?
+            EXISTS(SELECT 1 FROM positive_proxy.ballots WHERE voter_id = :voter_id AND proposal_id = :proposal_id) as voted_directly,
+            -- Has ANYONE in the proxy chain voted yet?
+            (SELECT b.vote_choice FROM proxy_chain pc
+             JOIN positive_proxy.ballots b ON b.voter_id = pc.current_voter
+             WHERE b.proposal_id = :proposal_id
+             ORDER BY pc.depth ASC LIMIT 1) as chain_vote;
+    """)
+    
+    for bill in active_bills:
+        result = await db.execute(action_check_query, {"voter_id": user_id, "proposal_id": bill.proposal_id})
+        status_row = result.fetchone()
+        
+        if status_row:
+            voted_directly = status_row[0]
+            chain_vote = status_row[1]
+            
+            # If they voted directly, it's not pending action
+            if voted_directly:
+                continue
+                
+            # If neither they nor their proxies have voted, it's a critical action item
+            if not chain_vote:
+                pending_items.append({
+                    "proposal_id": bill.proposal_id,
+                    "title": bill.title,
+                    "urgency": "critical",
+                    "message": "Neither you nor your designated proxies have acted on this bill yet."
+                })
+            # If their proxy voted, but they haven't, it's an optional override reminder
+            else:
+                pending_items.append({
+                    "proposal_id": bill.proposal_id,
+                    "title": bill.title,
+                    "urgency": "informational",
+                    "message": f"Your proxy chain has provisionally cast a '{chain_vote}'. You can still override this."
+                })
+                
+    return pending_items
+
 ### EOF: /positive-proxy/ledger/api/services/governance.py ###
