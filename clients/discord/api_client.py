@@ -2,10 +2,6 @@
 copyright = """
     Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
     Copyright (C) 2026  Joel Spector
-    Licensed under the GNU Affero General Public License v3."""
-copyright = """
-    Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
-    Copyright (C) 2026  Joel Spector
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as
@@ -25,8 +21,8 @@ from uuid import UUID
 from typing import Optional, List, Dict, Any
 
 # Use this file as such:
-    # from discord_bot.api_client import PositiveProxyClient
-    # bot.proxy_api = PositiveProxyClient(base_url="http://localhost:8000")
+# from discord_bot.api_client import PositiveProxyClient
+# bot.proxy_api = PositiveProxyClient(base_url="http://localhost:8000")
 
 class PositiveProxyClient:
     def __init__(self, base_url: str = "http://127.0.0.1:8000"):
@@ -79,12 +75,69 @@ class PositiveProxyClient:
     # PROPOSAL & VOTING ENDPOINTS
     # =========================================================================
 
+    async def submit_issue(self, creator_id: UUID, title: str, description: str) -> Dict[str, Any]:
+        """Maps to POST /proposals/issues - Anchors a public civic problem entry."""
+        return await self._request(
+            "POST", 
+            "/proposals/issues", 
+            params={"creator_id": str(creator_id)}, 
+            json={"title": title, "description": description}
+        )
+
+    async def submit_proposal(self, author_id: UUID, title: str, issue_ids: List[UUID], parent_id: Optional[UUID] = None) -> Dict[str, Any]:
+        """Maps to POST /proposals/ - Drafts a new proposal or structural fork."""
+        payload = {
+            "title": title,
+            "issue_ids": [str(i) for i in issue_ids],
+            "parent_id": str(parent_id) if parent_id else None
+        }
+        return await self._request(
+            "POST", 
+            "/proposals/", 
+            params={"author_id": str(author_id)}, 
+            json=payload
+        )
+
+    async def fork_proposal(self, parent_id: UUID, author_id: UUID, fork_title: str) -> Dict[str, Any]:
+        """Maps to POST /proposals/{parent_id}/fork - Git-like branch of an existing proposal."""
+        return await self._request(
+            "POST", 
+            f"/proposals/{parent_id}/fork", 
+            params={"author_id": str(author_id), "fork_title": fork_title}
+        )
+
+    async def submit_section_edit(self, proposal_id: UUID, user_id: UUID, section_number: int, content: str) -> Dict[str, Any]:
+        """Maps to POST /proposals/{id}/sections - Commits line alterations to working drafts."""
+        payload = {
+            "section_number": section_number,
+            "content": content
+        }
+        return await self._request(
+            "POST", 
+            f"/proposals/{proposal_id}/sections", 
+            params={"user_id": str(user_id)}, 
+            json=payload
+        )
+
+    async def cast_vote(self, proposal_id: UUID, voter_id: UUID, vote_choice: str) -> Dict[str, Any]:
+        """Maps to POST /proposals/{id}/vote - Casts a direct ballot, overriding proxy paths."""
+        return await self._request(
+            "POST", 
+            f"/proposals/{proposal_id}/vote", 
+            params={"voter_id": str(voter_id)}, 
+            json={"vote_choice": vote_choice}
+        )
+
+    async def trace_vote(self, proposal_id: UUID, user_id: UUID) -> Dict[str, Any]:
+        """Maps to GET /proposals/{id}/trace/{user_id} - Follows down the delegation path."""
+        return await self._request("GET", f"/proposals/{proposal_id}/trace/{user_id}")
+
     async def get_proposal_turnout(self, proposal_id: UUID) -> Dict[str, Any]:
-        """Maps to GET /proposals/{id}/turnout - Fetches the geometric legitimacy of a bill."""
+        """Maps to GET /proposals/{id}/turnout - Fetches global turnout matrix data."""
         return await self._request("GET", f"/proposals/{proposal_id}/turnout")
 
     async def get_proxy_volume(self, proposal_id: UUID, user_id: UUID) -> Dict[str, Any]:
-        """Maps to GET /proposals/{id}/proxy-volume/{user_id} - Reads anonymous weight count."""
+        """Maps to GET /proposals/{id}/proxy-volume/{user_id} - Reads representative's anonymous weight."""
         return await self._request("GET", f"/proposals/{proposal_id}/proxy-volume/{user_id}")
 
     # =========================================================================
@@ -92,11 +145,11 @@ class PositiveProxyClient:
     # =========================================================================
 
     async def get_ledger_snapshot(self) -> Dict[str, Any]:
-        """Maps to GET /audit/snapshot - Generates the global immutable verification block-hash."""
+        """Maps to GET /audit/snapshot - Generates global immutable state block-hash."""
         return await self._request("GET", "/audit/snapshot")
 
     async def verify_proposal_integrity(self, proposal_id: UUID) -> Dict[str, Any]:
-        """Maps to GET /audit/proposal/{id}/verify - Runs deep anti-tampering scan on a bill."""
+        """Maps to GET /audit/proposal/{id}/verify - Runs deep anti-tampering verification."""
         return await self._request("GET", f"/audit/proposal/{proposal_id}/verify")
-    
+
 ### EOF: /positive-proxy/clients/discord/api_client.py ###
