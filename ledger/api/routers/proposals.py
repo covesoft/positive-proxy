@@ -1,4 +1,4 @@
-### file: /positive-proxy/ledger/api/routers/proposals.py
+# file: /positive-proxy/ledger/api/routers/proposals.py
 copyright = """
     Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
     Copyright (C) 2026  Joel Spector
@@ -20,64 +20,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, select
 from uuid import UUID
-from typing import List
 from datetime import datetime, timezone
 
-from ledger.api.database import get_db # database session dependency
+from ledger.api.database import get_db
 from ledger.api.models.models import Issue, Proposal, ProposalIssue, BillSection, Ballot
-from ledger.api.schemas.schemas import IssueCreate, SectionEdit, BallotCast
-from ledger.api.schemas.schemas import ProposalCreate, ProposalResponse #, VoteCast, VoteResponse
+from ledger.api.schemas.schemas import IssueCreate, SectionEdit, BallotCast, ProposalCreate, ProposalResponse
 from ledger.api.services.governance import compute_section_hash, get_voter_turnout
-
 
 router = APIRouter(prefix="/proposals", tags=["proposals"])
 
-
 # =========================================================================
-# ENDPOINT: SUBMIT PROPOSALS LINKED TO ISSUES
+# 1. STATIC PATHS (Placed at top to prevent router path-trapping)
 # =========================================================================
-@router.post("/", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
-async def create_proposal(
-    proposal_data: ProposalCreate, 
-    author_id: UUID, 
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Drafts a completely new policy proposal or bill from scratch and 
-    automatically binds it to one or many structural civic issues.
-    """
-    # 1. Instantiate the proposal base entry (handles both original drafts and forks)
-    new_proposal = Proposal(
-        parent_id=proposal_data.parent_id,
-        author_id=author_id,
-        title=proposal_data.title,
-        status="draft"
-    )
-    db.add(new_proposal)
-    
-    # 2. Flush to securely generate the new proposal_id before binding relationships
-    await db.flush() 
 
-    # 3. Map many-to-many junction entries linking this bill to its core issues
-    if proposal_data.issue_ids:
-        for issue_id in proposal_data.issue_ids:
-            junction = ProposalIssue(proposal_id=new_proposal.proposal_id, issue_id=issue_id)
-            db.add(junction)
-        
-    # 4. Commit everything to the ledger database and refresh the state
-    await db.commit()
-    await db.refresh(new_proposal)
-    
-    return new_proposal
-
-
-
-# =========================================================================
-# SUBMIT ISSUES
-# =========================================================================
 @router.post("/issues", status_code=status.HTTP_201_CREATED)
 async def create_issue(issue_data: IssueCreate, creator_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Allows a user to anchor a public problem/issue into the database."""
+    """
+    Allows a user to anchor a public problem/issue into the database.
+    """
     new_issue = Issue(
         creator_id=creator_id,
         title=issue_data.title,
@@ -89,36 +49,37 @@ async def create_issue(issue_data: IssueCreate, creator_id: UUID, db: AsyncSessi
     return new_issue
 
 
+@router.post("/", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
+async def create_proposal(
+    proposal_data: ProposalCreate, 
+    author_id: UUID, 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Drafts a completely new policy proposal or bill from scratch and 
+    automatically binds it to one or many structural civic issues.
+    """
+    new_proposal = Proposal(
+        parent_id=proposal_data.parent_id,
+        author_id=author_id,
+        title=proposal_data.title,
+        status="draft"
+    )
+    db.add(new_proposal)
+    await db.flush() 
 
-@router.get("/{proposal_id}/trace/{user_id}")
-async def trace_vote(proposal_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db)):
-    """
-    Executes the secure downward vote-tracing function to follow a user's 
-    delegation path for a specific proposal.
-    """
-    query = text("""
-        SELECT step, proxy_holder_name, final_vote 
-        FROM positive_proxy.track_my_vote(:user_id, :proposal_id);
-    """)
-    
-    result = await db.execute(query, {"user_id": user_id, "proposal_id": proposal_id})
-    rows = result.fetchall()
-    
-    if not rows:
-        return {"message": "No proxy chain or votes found for this user on this proposal."}
-    
-    # Format the recursive database output into clean JSON
-    chain = []
-    for row in rows:
-        chain.append({
-            "step": row[0],
-            "proxy_holder": row[1],
-            "vote_cast": row[2] if row[2] else "No ballot cast yet (delegated)"
-        })
+    if proposal_data.issue_ids:
+        for issue_id in proposal_data.issue_ids:
+            junction = ProposalIssue(proposal_id=new_proposal.proposal_id, issue_id=issue_id)
+            db.add(junction)
         
-    return {"proposal_id": proposal_id, "origin_voter_id": user_id, "chain": chain}
+    await db.commit()
+    await db.refresh(new_proposal)
+    return new_proposal
 
-
+# =========================================================================
+# 2. DYNAMIC IDENTIFIER PATHS
+# =========================================================================
 
 @router.post("/{parent_id}/fork", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
 async def fork_proposal(parent_id: UUID, author_id: UUID, fork_title: str, db: AsyncSession = Depends(get_db)):
@@ -142,70 +103,11 @@ async def fork_proposal(parent_id: UUID, author_id: UUID, fork_title: str, db: A
     return forked_proposal
 
 
-
-#@router.post("/vote", response_model=VoteResponse, status_code=status.HTTP_201_CREATED)
-#async def cast_ballot(vote_data: VoteCast, voter_id: UUID, db: AsyncSession = Depends(get_db)):
-#    """
-#    Cast a direct vote ('yea', 'nay', 'abstain') on a specific proposal.
-#    Triggers unique constraint check if the voter already cast a ballot here.
-#    """
-#    # 1. Check if user already voted directly
-#    existing_ballot = await db.execute(
-#        select(Ballot).where(Ballot.proposal_id == vote_data.proposal_id, Ballot.voter_id == voter_id)
-#    )
-#    if existing_ballot.scalar_one_or_none():
-#        raise HTTPException(status_code=400, detail="Voter has already cast a direct ballot on this proposal")
-#
-#    # 2. Add the ballot record
-#    new_ballot = Ballot(
-#        proposal_id=vote_data.proposal_id,
-#        voter_id=voter_id,
-#        vote_choice=vote_data.vote_choice
-#    )
-#    db.add(new_ballot)
-#    await db.commit()
-#    await db.refresh(new_ballot)
-#    return new_ballot
-
-
-
-@router.get("/{proposal_id}/turnout")
-async def read_proposal_turnout(proposal_id: UUID, db: AsyncSession = Depends(get_db)):
-    """
-    Get total active electorate count, total cast ballots, and raw turnout percentage.
-    """
-    return await get_voter_turnout(db, proposal_id)
-
-
-
-@router.get("/{proposal_id}/proxy-volume/{user_id}")
-async def read_proxy_volume(proposal_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db)):
-    """
-    Returns the total numeric volume of ballots a representative controls for a bill.
-    Strictly anonymous: yields only a number, hiding upstream voter identities.
-    """
-    query = text("""
-        SELECT ballot_volume 
-        FROM positive_proxy.get_proxy_volume(:user_id, :proposal_id);
-    """)
-    result = await db.execute(query, {"user_id": user_id, "proposal_id": proposal_id})
-    row = result.fetchone()
-    
-    return {
-        "proposal_id": proposal_id,
-        "representative_id": user_id,
-        "ballot_volume": row[0] if row else 1  # Minimum 1 (includes their own vote)
-    }
-
-
-
-
-# =========================================================================
-# SUBMIT LANGUAGE ALTERATIONS (Git-like line edits)
-# =========================================================================
 @router.post("/{proposal_id}/sections", status_code=status.HTTP_201_CREATED)
 async def add_or_edit_section(proposal_id: UUID, section_data: SectionEdit, user_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Appends or updates a deterministic text block within a working draft bill."""
+    """
+    Appends or updates a deterministic text block within a working draft bill.
+    """
     proposal = await db.get(Proposal, proposal_id)
     if not proposal or proposal.status != "draft":
         raise HTTPException(status_code=400, detail="Cannot alter text unless the proposal is an active draft")
@@ -224,17 +126,16 @@ async def add_or_edit_section(proposal_id: UUID, section_data: SectionEdit, user
     return {"status": "section_committed", "version_hash": v_hash}
 
 
-# =========================================================================
-# THE DIRECT VOTING MECHANISM
-# =========================================================================
 @router.post("/{proposal_id}/vote", status_code=status.HTTP_201_CREATED)
 async def cast_direct_ballot(proposal_id: UUID, voter_id: UUID, ballot_data: BallotCast, db: AsyncSession = Depends(get_db)):
-    """Cast an explicit direct vote. Overrides active proxy chain paths automatically."""
+    """
+    Cast an explicit direct vote. Overrides active proxy chain paths automatically.
+    """
     proposal = await db.get(Proposal, proposal_id)
     if not proposal or proposal.status != "bill":
         raise HTTPException(status_code=400, detail="Voting is only permitted on formal, frozen bills")
 
-    # Clear any past ballot cast by this user on this proposal to allow updating intent
+    # Clear any past ballot cast by this user on this proposal to allow updating intent securely
     existing_ballot = await db.execute(
         select(Ballot).where(Ballot.proposal_id == proposal_id, Ballot.voter_id == voter_id)
     )
@@ -250,5 +151,61 @@ async def cast_direct_ballot(proposal_id: UUID, voter_id: UUID, ballot_data: Bal
     db.add(new_ballot)
     await db.commit()
     return {"status": "ballot_logged_successfully", "choice": ballot_data.vote_choice}
+
+
+@router.get("/{proposal_id}/trace/{user_id}")
+async def trace_vote(proposal_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Executes the secure downward vote-tracing function to follow a user's 
+    delegation path for a specific proposal.
+    """
+    query = text("""
+        SELECT step, proxy_holder_name, final_vote 
+        FROM positive_proxy.track_my_vote(:user_id, :proposal_id);
+    """)
+    
+    result = await db.execute(query, {"user_id": user_id, "proposal_id": proposal_id})
+    rows = result.fetchall()
+    
+    if not rows:
+        return {"message": "No proxy chain or votes found for this user on this proposal."}
+    
+    chain = []
+    for row in rows:
+        chain.append({
+            "step": row[0],
+            "proxy_holder": row[1],
+            "vote_cast": row[2] if row[2] else "No ballot cast yet (delegated)"
+        })
+        
+    return {"proposal_id": proposal_id, "origin_voter_id": user_id, "chain": chain}
+
+
+@router.get("/{proposal_id}/turnout")
+async def read_proposal_turnout(proposal_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Get total active electorate count, total cast ballots, and raw turnout percentage.
+    """
+    return await get_voter_turnout(db, proposal_id)
+
+
+@router.get("/{proposal_id}/proxy-volume/{user_id}")
+async def read_proxy_volume(proposal_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Returns the total numeric volume of ballots a representative controls for a bill.
+    Strictly anonymous: yields only a number, hiding upstream voter identities.
+    """
+    query = text("""
+        SELECT ballot_volume 
+        FROM positive_proxy.get_proxy_volume(:user_id, :proposal_id);
+    """)
+    result = await db.execute(query, {"user_id": user_id, "proposal_id": proposal_id})
+    row = result.fetchone()
+    
+    return {
+        "proposal_id": proposal_id,
+        "representative_id": user_id,
+        "ballot_volume": row[0] if row else 1
+    }
 
 ### EOF: /positive-proxy/ledger/api/routers/proposals.py ###
