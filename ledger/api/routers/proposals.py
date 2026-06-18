@@ -26,54 +26,15 @@ from datetime import datetime, timezone
 from ledger.api.database import get_db # database session dependency
 from ledger.api.models.models import Issue, Proposal, ProposalIssue, BillSection, Ballot
 from ledger.api.schemas.schemas import IssueCreate, SectionEdit, BallotCast
-from ledger.api.schemas.schemas import ProposalCreate, ProposalResponse, VoteCast, VoteResponse
+from ledger.api.schemas.schemas import ProposalCreate, ProposalResponse #, VoteCast, VoteResponse
 from ledger.api.services.governance import compute_section_hash, get_voter_turnout
 
 
 router = APIRouter(prefix="/proposals", tags=["proposals"])
 
 
-@router.post("/", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
-async def create_proposal(proposal_data: ProposalCreate, db: AsyncSession = Depends(get_db)):
-    """
-    Draft a completely new policy proposal or bill from scratch.
-    """
-    new_proposal = Proposal(
-        title=proposal_data.title,
-        author_id=proposal_data.author_id,
-        status="draft"
-    )
-    db.add(new_proposal)
-    await db.commit()
-    await db.refresh(new_proposal)
-    return new_proposal
-
 # =========================================================================
-# SUBMIT PROPOSALS LINKED TO ISSUES
-# =========================================================================
-@router.post("/", status_code=status.HTTP_201_CREATED)
-async def create_proposal(proposal_data: ProposalCreate, author_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Creates a proposal and automatically binds it to one or many issues."""
-    new_proposal = Proposal(
-        parent_id=proposal_data.parent_id,
-        author_id=author_id,
-        title=proposal_data.title,
-        status="draft"
-    )
-    db.add(new_proposal)
-    await db.flush() # Secure the proposal_id before joining tables
-
-    # Map many-to-many relationships to the issues database
-    for issue_id in proposal_data.issue_ids:
-        junction = ProposalIssue(proposal_id=new_proposal.proposal_id, issue_id=issue_id)
-        db.add(junction)
-        
-    await db.commit()
-    await db.refresh(new_proposal)
-    return new_proposal
-
-# =========================================================================
-# SUBMIT PROPOSALS LINKED TO ISSUES
+# ENDPOINT: SUBMIT PROPOSALS LINKED TO ISSUES
 # =========================================================================
 @router.post("/", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
 async def create_proposal(
@@ -108,6 +69,25 @@ async def create_proposal(
     await db.refresh(new_proposal)
     
     return new_proposal
+
+
+
+# =========================================================================
+# SUBMIT ISSUES
+# =========================================================================
+@router.post("/issues", status_code=status.HTTP_201_CREATED)
+async def create_issue(issue_data: IssueCreate, creator_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Allows a user to anchor a public problem/issue into the database."""
+    new_issue = Issue(
+        creator_id=creator_id,
+        title=issue_data.title,
+        description=issue_data.description
+    )
+    db.add(new_issue)
+    await db.commit()
+    await db.refresh(new_issue)
+    return new_issue
+
 
 
 @router.get("/{proposal_id}/trace/{user_id}")
@@ -163,30 +143,29 @@ async def fork_proposal(parent_id: UUID, author_id: UUID, fork_title: str, db: A
 
 
 
-@router.post("/vote", response_model=VoteResponse, status_code=status.HTTP_201_CREATED)
-async def cast_ballot(vote_data: VoteCast, voter_id: UUID, db: AsyncSession = Depends(get_db)):
-    """
-    Cast a direct vote ('yea', 'nay', 'abstain') on a specific proposal.
-    Triggers unique constraint check if the voter already cast a ballot here.
-    """
-    # 1. Check if user already voted directly
-    existing_ballot = await db.execute(
-        select(Ballot).where(Ballot.proposal_id == vote_data.proposal_id, Ballot.voter_id == voter_id)
-    )
-    if existing_ballot.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Voter has already cast a direct ballot on this proposal")
-
-    # 2. Add the ballot record
-    new_ballot = Ballot(
-        proposal_id=vote_data.proposal_id,
-        voter_id=voter_id,
-        vote_choice=vote_data.vote_choice
-    )
-    db.add(new_ballot)
-    await db.commit()
-    await db.refresh(new_ballot)
-    return new_ballot
-
+#@router.post("/vote", response_model=VoteResponse, status_code=status.HTTP_201_CREATED)
+#async def cast_ballot(vote_data: VoteCast, voter_id: UUID, db: AsyncSession = Depends(get_db)):
+#    """
+#    Cast a direct vote ('yea', 'nay', 'abstain') on a specific proposal.
+#    Triggers unique constraint check if the voter already cast a ballot here.
+#    """
+#    # 1. Check if user already voted directly
+#    existing_ballot = await db.execute(
+#        select(Ballot).where(Ballot.proposal_id == vote_data.proposal_id, Ballot.voter_id == voter_id)
+#    )
+#    if existing_ballot.scalar_one_or_none():
+#        raise HTTPException(status_code=400, detail="Voter has already cast a direct ballot on this proposal")
+#
+#    # 2. Add the ballot record
+#    new_ballot = Ballot(
+#        proposal_id=vote_data.proposal_id,
+#        voter_id=voter_id,
+#        vote_choice=vote_data.vote_choice
+#    )
+#    db.add(new_ballot)
+#    await db.commit()
+#    await db.refresh(new_ballot)
+#    return new_ballot
 
 
 
@@ -196,6 +175,7 @@ async def read_proposal_turnout(proposal_id: UUID, db: AsyncSession = Depends(ge
     Get total active electorate count, total cast ballots, and raw turnout percentage.
     """
     return await get_voter_turnout(db, proposal_id)
+
 
 
 @router.get("/{proposal_id}/proxy-volume/{user_id}")
@@ -218,21 +198,6 @@ async def read_proxy_volume(proposal_id: UUID, user_id: UUID, db: AsyncSession =
     }
 
 
-# =========================================================================
-# SUBMIT ISSUES
-# =========================================================================
-@router.post("/issues", status_code=status.HTTP_201_CREATED)
-async def create_issue(issue_data: IssueCreate, creator_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Allows a user to anchor a public problem/issue into the database."""
-    new_issue = Issue(
-        creator_id=creator_id,
-        title=issue_data.title,
-        description=issue_data.description
-    )
-    db.add(new_issue)
-    await db.commit()
-    await db.refresh(new_issue)
-    return new_issue
 
 
 # =========================================================================
