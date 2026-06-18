@@ -21,6 +21,8 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional, List
 
+
+
 # --- USER SCHEMAS ---
 class UserBase(BaseModel):
     username: str = Field(..., max_length=100)
@@ -35,6 +37,8 @@ class UserResponse(UserBase):
 
     class Config:
         from_attributes = True
+
+
 
 # --- PROXY SCHEMAS ---
 class ProxyCreate(BaseModel):
@@ -54,6 +58,8 @@ class ProxyResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+
 # --- BALLOT/VOTE SCHEMAS ---
 class VoteCast(BaseModel):
     proposal_id: UUID
@@ -69,11 +75,13 @@ class VoteResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+
+
 # --- ISSUE SCHEMAS ---
 class IssueCreate(BaseModel):
-    creator_id: UUID
-    title: str = Field(..., max_length=1024)
-    description: str
+    title: str = Field(..., max_length=1024, description="Clear, concise headline of the civic issue.")
+    description: str = Field(..., description="Detailed context and background of the problem.")
 
 class IssueResponse(BaseModel):
     issue_id: UUID
@@ -84,6 +92,28 @@ class IssueResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+
+# --- PROPOSAL SCHEMAS ---
+class ProposalCreate(BaseModel):
+    title: str = Field(..., max_length=1024, description="The name of the working draft or proposed bill.")
+    issue_ids: list[UUID] = Field(default=[], description="Links this proposal to one or many tracked issues.")
+    parent_id: Optional[UUID] = Field(default=None, description="Populated only if this proposal is a fork of another bill.")
+
+class ProposalResponse(BaseModel):
+    proposal_id: UUID
+    parent_id: Optional[UUID]
+    author_id: UUID
+    title: str
+    status: str
+    declared_bill_at: Optional[datetime]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 
 # --- BILL SECTION SCHEMAS ---
 class BillSectionCreate(BaseModel):
@@ -105,21 +135,14 @@ class BillSectionResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# --- PROPOSAL SCHEMAS ---
-class ProposalCreate(BaseModel):
-    author_id: UUID
-    title: str = Field(..., max_length=1024)
 
-class ProposalResponse(BaseModel):
-    proposal_id: UUID
-    parent_id: Optional[UUID]
-    author_id: UUID
-    title: str
-    status: str
-    declared_bill_at: Optional[datetime]
-    created_at: datetime
 
-    class Config:
-        from_attributes = True
+
+class SectionEdit(BaseModel):
+    section_number: int
+    content: str
+
+class BallotCast(BaseModel):
+    vote_choice: str  # 'yea', 'nay', or 'abstain'
 
 ### EOF: /positive-proxy/ledger/api/schemas/schemas.py ###

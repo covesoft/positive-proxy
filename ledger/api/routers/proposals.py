@@ -24,9 +24,10 @@ from typing import List
 from datetime import datetime, timezone
 
 from ledger.api.database import get_db # database session dependency
-from ledger.api.models.models import Proposal, Ballot, BillSection
+from ledger.api.models.models import Issue, Proposal, ProposalIssue, BillSection, Ballot
+from ledger.api.schemas.schemas import IssueCreate, SectionEdit, BallotCast
 from ledger.api.schemas.schemas import ProposalCreate, ProposalResponse, VoteCast, VoteResponse
-
+from ledger.api.services.governance import compute_section_hash, get_voter_turnout
 
 
 router = APIRouter(prefix="/proposals", tags=["proposals"])
@@ -45,6 +46,67 @@ async def create_proposal(proposal_data: ProposalCreate, db: AsyncSession = Depe
     db.add(new_proposal)
     await db.commit()
     await db.refresh(new_proposal)
+    return new_proposal
+
+# =========================================================================
+# SUBMIT PROPOSALS LINKED TO ISSUES
+# =========================================================================
+@router.post("/", status_code=status.HTTP_201_CREATED)
+async def create_proposal(proposal_data: ProposalCreate, author_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Creates a proposal and automatically binds it to one or many issues."""
+    new_proposal = Proposal(
+        parent_id=proposal_data.parent_id,
+        author_id=author_id,
+        title=proposal_data.title,
+        status="draft"
+    )
+    db.add(new_proposal)
+    await db.flush() # Secure the proposal_id before joining tables
+
+    # Map many-to-many relationships to the issues database
+    for issue_id in proposal_data.issue_ids:
+        junction = ProposalIssue(proposal_id=new_proposal.proposal_id, issue_id=issue_id)
+        db.add(junction)
+        
+    await db.commit()
+    await db.refresh(new_proposal)
+    return new_proposal
+
+# =========================================================================
+# SUBMIT PROPOSALS LINKED TO ISSUES
+# =========================================================================
+@router.post("/", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
+async def create_proposal(
+    proposal_data: ProposalCreate, 
+    author_id: UUID, 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Drafts a completely new policy proposal or bill from scratch and 
+    automatically binds it to one or many structural civic issues.
+    """
+    # 1. Instantiate the proposal base entry (handles both original drafts and forks)
+    new_proposal = Proposal(
+        parent_id=proposal_data.parent_id,
+        author_id=author_id,
+        title=proposal_data.title,
+        status="draft"
+    )
+    db.add(new_proposal)
+    
+    # 2. Flush to securely generate the new proposal_id before binding relationships
+    await db.flush() 
+
+    # 3. Map many-to-many junction entries linking this bill to its core issues
+    if proposal_data.issue_ids:
+        for issue_id in proposal_data.issue_ids:
+            junction = ProposalIssue(proposal_id=new_proposal.proposal_id, issue_id=issue_id)
+            db.add(junction)
+        
+    # 4. Commit everything to the ledger database and refresh the state
+    await db.commit()
+    await db.refresh(new_proposal)
+    
     return new_proposal
 
 
@@ -127,8 +189,6 @@ async def cast_ballot(vote_data: VoteCast, voter_id: UUID, db: AsyncSession = De
 
 
 
-from sqlalchemy import text
-from ledger.api.services.governance import get_voter_turnout
 
 @router.get("/{proposal_id}/turnout")
 async def read_proposal_turnout(proposal_id: UUID, db: AsyncSession = Depends(get_db)):
@@ -156,5 +216,74 @@ async def read_proxy_volume(proposal_id: UUID, user_id: UUID, db: AsyncSession =
         "representative_id": user_id,
         "ballot_volume": row[0] if row else 1  # Minimum 1 (includes their own vote)
     }
+
+
+# =========================================================================
+# SUBMIT ISSUES
+# =========================================================================
+@router.post("/issues", status_code=status.HTTP_201_CREATED)
+async def create_issue(issue_data: IssueCreate, creator_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Allows a user to anchor a public problem/issue into the database."""
+    new_issue = Issue(
+        creator_id=creator_id,
+        title=issue_data.title,
+        description=issue_data.description
+    )
+    db.add(new_issue)
+    await db.commit()
+    await db.refresh(new_issue)
+    return new_issue
+
+
+# =========================================================================
+# SUBMIT LANGUAGE ALTERATIONS (Git-like line edits)
+# =========================================================================
+@router.post("/{proposal_id}/sections", status_code=status.HTTP_201_CREATED)
+async def add_or_edit_section(proposal_id: UUID, section_data: SectionEdit, user_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Appends or updates a deterministic text block within a working draft bill."""
+    proposal = await db.get(Proposal, proposal_id)
+    if not proposal or proposal.status != "draft":
+        raise HTTPException(status_code=400, detail="Cannot alter text unless the proposal is an active draft")
+
+    v_hash = compute_section_hash(section_data.content)
+    
+    new_section = BillSection(
+        proposal_id=proposal_id,
+        section_number=section_data.section_number,
+        content=section_data.content,
+        version_hash=v_hash,
+        updated_by=user_id
+    )
+    db.add(new_section)
+    await db.commit()
+    return {"status": "section_committed", "version_hash": v_hash}
+
+
+# =========================================================================
+# THE DIRECT VOTING MECHANISM
+# =========================================================================
+@router.post("/{proposal_id}/vote", status_code=status.HTTP_201_CREATED)
+async def cast_direct_ballot(proposal_id: UUID, voter_id: UUID, ballot_data: BallotCast, db: AsyncSession = Depends(get_db)):
+    """Cast an explicit direct vote. Overrides active proxy chain paths automatically."""
+    proposal = await db.get(Proposal, proposal_id)
+    if not proposal or proposal.status != "bill":
+        raise HTTPException(status_code=400, detail="Voting is only permitted on formal, frozen bills")
+
+    # Clear any past ballot cast by this user on this proposal to allow updating intent
+    existing_ballot = await db.execute(
+        select(Ballot).where(Ballot.proposal_id == proposal_id, Ballot.voter_id == voter_id)
+    )
+    old_vote = existing_ballot.scalar_one_or_none()
+    if old_vote:
+        await db.delete(old_vote)
+
+    new_ballot = Ballot(
+        proposal_id=proposal_id,
+        voter_id=voter_id,
+        vote_choice=ballot_data.vote_choice
+    )
+    db.add(new_ballot)
+    await db.commit()
+    return {"status": "ballot_logged_successfully", "choice": ballot_data.vote_choice}
 
 ### EOF: /positive-proxy/ledger/api/routers/proposals.py ###
