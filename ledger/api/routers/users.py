@@ -30,6 +30,7 @@ from ledger.api.models.models import User, Proxy, UserStatusLog
 from ledger.api.schemas.schemas import UserCreate, UserResponse, ProxyCreate, ProxyResponse
 from ledger.api.services.governance import get_pending_action_items
 from ledger.api.services.notification import check_proxy_action_alerts
+import uuid
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -40,10 +41,19 @@ async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db))
     """
     # Check if username already exists
     existing_user = await db.execute(select(User).where(User.username == user_data.username))
-    if existing_user.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Username already registered")
-    
-    new_user = User(username=user_data.username)
+    user_record = existing_user.scalar_one_or_none()
+
+    if user_record:
+        return user_record
+
+    # Generate the UUID as a string immediately to prevent psycopg adaptation errors
+    generated_id = str(uuid.uuid4())
+
+    new_user = User(
+        user_id=generated_id,
+        username=user_data.username
+    )
+
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)

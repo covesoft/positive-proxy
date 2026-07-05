@@ -168,21 +168,25 @@ class PositiveProxyClient:
             raise httpx.RequestError("Failed to communicate with proxy backend ledger.")
 
     async def register_user(self, user_id: int, username: str) -> Dict[str, Any]:
+        # Keep user_id as an int here, since the onboarding route can use it as a seeding parameter
         payload = {"user_id": str(user_id), "username": username[:100]}
-        return await self._request("POST", "/users", json=payload)
+        return await self._request("POST", "/users/", json=payload)
 
-    async def set_proxy(self, user_id: int, target_user_id: int, proposal_id: Optional[str] = None, is_transferable: bool = True) -> Dict[str, Any]:
+    async def set_proxy(self, user_id: str, target_user_id: str, proposal_id: Optional[str] = None, is_transferable: bool = True) -> Dict[str, Any]:
+        # Updated user_id and target_user_id type-hints to str
         payload = {
-            "target_user_id": str(target_user_id),
+            "target_user_id": target_user_id,
             "proposal_id": proposal_id,
             "is_transferable": is_transferable
         }
         return await self._request("POST", f"/users/{user_id}/proxy", json=payload)
 
-    async def get_pending_actions(self, user_id: int) -> Dict[str, Any]:
+    async def get_pending_actions(self, user_id: str) -> Dict[str, Any]:
+        # Updated user_id type-hint to str
         return await self._request("GET", f"/users/{user_id}/pending-actions")
 
-    async def get_alerts(self, user_id: int) -> Dict[str, Any]:
+    async def get_alerts(self, user_id: str) -> Dict[str, Any]:
+        # Updated user_id type-hint to str
         return await self._request("GET", f"/users/{user_id}/alerts")
 
     async def create_proposal(self, title: str, summary: str, issue_ids: List[str], parent_id: Optional[str] = None) -> Dict[str, Any]:
@@ -205,20 +209,23 @@ class PositiveProxyClient:
     async def declare_bill(self, proposal_id: str) -> Dict[str, Any]:
         return await self._request("POST", f"/proposals/{proposal_id}/declare-bill")
 
-    async def cast_ballot(self, proposal_id: str, voter_id: int, choice: str) -> Dict[str, Any]:
+    async def cast_ballot(self, proposal_id: str, voter_id: str, choice: str) -> Dict[str, Any]:
+        # Updated voter_id type-hint to str
         payload = {
-            "voter_id": str(voter_id),
-            "choice": choice.lower() # Must be 'yea', 'nay', or 'abstain'
+            "voter_id": voter_id,
+            "choice": choice.lower()
         }
         return await self._request("POST", f"/proposals/{proposal_id}/ballot", json=payload)
 
-    async def trace_path(self, proposal_id: str, user_id: int) -> Dict[str, Any]:
+    async def trace_path(self, proposal_id: str, user_id: str) -> Dict[str, Any]:
+        # Updated user_id type-hint to str
         return await self._request("GET", f"/proposals/{proposal_id}/trace/{user_id}")
 
     async def get_turnout(self, proposal_id: str) -> Dict[str, Any]:
         return await self._request("GET", f"/proposals/{proposal_id}/turnout")
 
-    async def get_proxy_volume(self, proposal_id: str, representative_id: int) -> Dict[str, Any]:
+    async def get_proxy_volume(self, proposal_id: str, representative_id: str) -> Dict[str, Any]:
+        # Updated representative_id type-hint to str
         return await self._request("GET", f"/proposals/{proposal_id}/proxy-volume/{representative_id}")
 
     async def get_audit_snapshot(self) -> Dict[str, Any]:
@@ -246,10 +253,16 @@ class VoterDashboardView(PrivateLayoutView):
     async def initialise_data(self):
         """Pre-fetches essential profile information from backend services."""
         try:
-            # Ensure citizen is registered on the ledger before loading status
-            await self.client.register_user(self.user.id, self.user.display_name)
-            self.alert_data = (await self.client.get_alerts(self.user.id)).get("alerts", [])
-            self.pending_actions = await self.client.get_pending_actions(self.user.id)
+            # 1. Onboard or fetch user record from the ledger
+            user_record = await self.client.register_user(self.user.id, self.user.display_name)
+
+            # 2. Extract and cache the system-agnostic UUID string returned by the backend
+            backend_uuid = user_record.get("user_id")
+            self.cog.id_map[self.user.id] = backend_uuid
+
+            # 3. Swap out the Discord snowflake ID for the true backend UUID across dependent endpoints
+            self.alert_data = (await self.client.get_alerts(backend_uuid)).get("alerts", [])
+            self.pending_actions = await self.client.get_pending_actions(backend_uuid)
         except Exception as e:
             logger.error(f"Error initializing dashboard metrics for {self.user.id}: {str(e)}")
 
@@ -372,15 +385,25 @@ class ProxyWorkspaceView(PrivateLayoutView):
         # Spawns a user select interaction menu
         view = discord.ui.View(timeout=180)
         user_select = discord.ui.UserSelect(placeholder="Select representative to delegate...")
-        
+
         async def select_callback(inter: discord.Interaction):
             target_user = user_select.values[0]
+
+            # Retrieve cached tracking UUIDs for both entities
+            grantor_uuid = self.cog.id_map.get(self.user.id)
+            target_uuid = self.cog.id_map.get(target_user.id)
+
+            if not target_uuid:
+                # If target isn't in cache, quickly hit endpoint to register/find them
+                target_record = await self.cog.api_client.register_user(target_user.id, target_user.display_name)
+                target_uuid = target_record.get("user_id")
+                self.cog.id_map[target_user.id] = target_uuid
+
             try:
-                # Update database proxy mapping using the api client
                 await self.cog.api_client.set_proxy(
-                    user_id=self.user.id,
-                    target_user_id=target_user.id,
-                    proposal_id=None, # Global fallback proxy
+                    user_id=grantor_uuid,  # Sent as UUID string
+                    target_user_id=target_uuid,  # Sent as UUID string
+                    proposal_id=None,
                     is_transferable=self.is_transferable
                 )
                 await inter.response.send_message(
@@ -574,9 +597,13 @@ class ProposalInspectorView(PrivateLayoutView):
         view = discord.ui.View(timeout=120)
         prop_id = self.proposal.get("id")
 
+        # ──► FIX: Fetch the user's UUID from the cog's id_map cache
+        user_uuid = self.cog.id_map.get(self.user.id)
+
         async def vote_callback(inter: discord.Interaction, choice: str):
             try:
-                await self.cog.api_client.cast_ballot(prop_id, self.user.id, choice)
+                # ──► FIX: Pass user_uuid instead of self.user.id
+                await self.cog.api_client.cast_ballot(prop_id, user_uuid, choice)
                 await inter.response.send_message(
                     f"✅ Direct ballot recorded! Cast **{choice.upper()}** on {prop_id}. This overrides all active delegated proxy votes.",
                     ephemeral=True
@@ -602,11 +629,16 @@ class ProposalInspectorView(PrivateLayoutView):
     async def trace_delegation(self, interaction: discord.Interaction):
         """Calculates and traces the delegation path across downstream representatives."""
         prop_id = self.proposal.get("id")
+
+        # ──► FIX: Fetch the user's UUID from the cog's id_map cache
+        user_uuid = self.cog.id_map.get(self.user.id)
+
         try:
-            path_trace = await self.cog.api_client.trace_path(prop_id, self.user.id)
+            # ──► FIX: Pass user_uuid instead of self.user.id
+            path_trace = await self.cog.api_client.trace_path(prop_id, user_uuid)
             steps = path_trace.get("path", [])
             active_vote = path_trace.get("effective_vote", "None Cast")
-            
+
             if not steps:
                 trace_output = "🧭 **Direct Route**: You hold your own voting authority. No active proxy chains detected."
             else:
@@ -740,6 +772,7 @@ class PositiveProxyCog(commands.Cog):
         self.bot = bot
         # Core API integration client directed towards running FastAPI loop
         self.api_client = PositiveProxyClient(base_url="http://localhost:8000")
+        self.id_map: Dict[int, str] = {}
 
     @commands.hybrid_command(
         name="dashboard",

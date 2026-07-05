@@ -27,7 +27,7 @@ from ledger.api.config import settings
 # 1. Create the asynchronous database engine
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=True,  # Set to False in production; True logs all raw SQL scripts being executed
+    echo=False,  # Set to False in production; True logs all raw SQL scripts being executed
     future=True
 )
 

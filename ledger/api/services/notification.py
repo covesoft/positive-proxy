@@ -37,7 +37,7 @@ async def check_proxy_action_alerts(db: AsyncSession, user_id: UUID) -> list[dic
     # but their downstream proxy chain HAS cast a ballot.
     query = text("""
         WITH RECURSIVE proxy_chain AS (
-            SELECT :voter_id AS current_voter, 0 AS depth, ARRAY[:voter_id::uuid] AS path, TRUE AS transferable
+            SELECT :voter_id AS current_voter, 0 AS depth, ARRAY[:voter_id] AS path, TRUE AS transferable
             
             UNION ALL
             
