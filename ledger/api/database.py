@@ -64,15 +64,15 @@ async def initialize_db_schema() -> None:
         sql_script = f.read()
 
     try:
-        async with engine.begin() as conn:
-                # Split statements by semicolons followed by newlines to protect inner-function semicolons
-                statements = [stmt.strip() for stmt in sql_script.split(";\n") if stmt.strip()]
-                
-                for index, statement in enumerate(statements):
-                    if statement:
-                        # Add the semicolon back to the individual statement
-                        await conn.execute(text(statement + ";"))
-                        
+        # 1. Acquire a raw connection out of the SQLAlchemy engine pool
+        async with engine.connect() as conn:
+            # 2. Extract the underlying raw asyncpg connection object
+            raw_asyncpg_conn = await conn.get_raw_connection()
+            
+            # 3. Access the driver connection object to run the whole file safely
+            # driver_connection allows executing raw script blobs containing internal function semicolons
+            await raw_asyncpg_conn.driver_connection.execute(sql_script)
+            
         print("✅ Database schema initialization complete.")
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
