@@ -39,7 +39,7 @@ $$ LANGUAGE plpgsql VOLATILE;
 -- =========================================================================
 
 -- 1. USERS TABLE
-CREATE TABLE positive_proxy.users (
+CREATE TABLE IF NOT EXISTS positive_proxy.users (
     user_id UUID PRIMARY KEY DEFAULT positive_proxy.generate_uuidv7(),
     username VARCHAR(100) NOT NULL UNIQUE,
     is_active BOOLEAN DEFAULT TRUE,
@@ -47,7 +47,7 @@ CREATE TABLE positive_proxy.users (
 );
 
 -- Historic log for citizen relocation/status changes
-CREATE TABLE positive_proxy.user_status_log (
+CREATE TABLE IF NOT EXISTS positive_proxy.user_status_log (
     log_id UUID PRIMARY KEY DEFAULT positive_proxy.generate_uuidv7(),
     user_id UUID REFERENCES positive_proxy.users(user_id) ON DELETE CASCADE,
     status_changed_to BOOLEAN NOT NULL,
@@ -55,7 +55,7 @@ CREATE TABLE positive_proxy.user_status_log (
 );
 
 -- 2. ISSUES DATABASE
-CREATE TABLE positive_proxy.issues (
+CREATE TABLE IF NOT EXISTS positive_proxy.issues (
     issue_id UUID PRIMARY KEY DEFAULT positive_proxy.generate_uuidv7(),
     creator_id UUID REFERENCES positive_proxy.users(user_id) ON DELETE SET NULL,
     title VARCHAR(1024) NOT NULL, -- Expanded length matching Python configuration specs
@@ -64,7 +64,7 @@ CREATE TABLE positive_proxy.issues (
 );
 
 -- 3. PROPOSALS TABLE
-CREATE TABLE positive_proxy.proposals (
+CREATE TABLE IF NOT EXISTS positive_proxy.proposals (
     proposal_id UUID PRIMARY KEY DEFAULT positive_proxy.generate_uuidv7(),
     parent_id UUID REFERENCES positive_proxy.proposals(proposal_id) ON DELETE SET NULL NULL,
     author_id UUID REFERENCES positive_proxy.users(user_id) ON DELETE SET NULL,
@@ -75,14 +75,14 @@ CREATE TABLE positive_proxy.proposals (
 );
 
 -- Many-to-Many junction table for Issues and Proposals
-CREATE TABLE positive_proxy.proposal_issues (
+CREATE TABLE IF NOT EXISTS positive_proxy.proposal_issues (
     proposal_id UUID REFERENCES positive_proxy.proposals(proposal_id) ON DELETE CASCADE,
     issue_id UUID REFERENCES positive_proxy.issues(issue_id) ON DELETE CASCADE,
     PRIMARY KEY (proposal_id, issue_id)
 );
 
 -- 4. LINE-ITEM BILL SECTIONS (Git-like evolution)
-CREATE TABLE positive_proxy.bill_sections (
+CREATE TABLE IF NOT EXISTS positive_proxy.bill_sections (
     section_id UUID PRIMARY KEY DEFAULT positive_proxy.generate_uuidv7(),
     proposal_id UUID REFERENCES positive_proxy.proposals(proposal_id) ON DELETE CASCADE,
     section_number INT NOT NULL,
@@ -94,7 +94,7 @@ CREATE TABLE positive_proxy.bill_sections (
 );
 
 -- 5. PROXIES TABLE (Handles Global or Per-Bill delegation)
-CREATE TABLE positive_proxy.proxies (
+CREATE TABLE IF NOT EXISTS positive_proxy.proxies (
     proxy_id UUID PRIMARY KEY DEFAULT positive_proxy.generate_uuidv7(),
     grantor_id UUID REFERENCES positive_proxy.users(user_id) ON DELETE CASCADE,
     proxy_to_id UUID REFERENCES positive_proxy.users(user_id) ON DELETE CASCADE,
@@ -105,7 +105,7 @@ CREATE TABLE positive_proxy.proxies (
 );
 
 -- 6. BALLOTS TABLE (The direct actions)
-CREATE TABLE positive_proxy.ballots (
+CREATE TABLE IF NOT EXISTS positive_proxy.ballots (
     ballot_id UUID PRIMARY KEY DEFAULT positive_proxy.generate_uuidv7(),
     proposal_id UUID REFERENCES positive_proxy.proposals(proposal_id) ON DELETE CASCADE,
     voter_id UUID REFERENCES positive_proxy.users(user_id) ON DELETE CASCADE,
@@ -118,9 +118,9 @@ CREATE TABLE positive_proxy.ballots (
 -- OPTIMIZED INDEX ARCHITECTURE
 -- =========================================================================
 -- Partial index guarantees lightning fast recursive lookups for active delegations
-CREATE INDEX idx_active_proxies ON positive_proxy.proxies (grantor_id) WHERE revoked_at IS NULL;
-CREATE INDEX idx_ballots_lookup ON positive_proxy.ballots (proposal_id, voter_id);
-CREATE INDEX idx_bill_sections_order ON positive_proxy.bill_sections (proposal_id, section_number);
+CREATE INDEX IF NOT EXISTS idx_active_proxies ON positive_proxy.proxies (grantor_id) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_ballots_lookup ON positive_proxy.ballots (proposal_id, voter_id);
+CREATE INDEX IF NOT EXISTS idx_bill_sections_order ON positive_proxy.bill_sections (proposal_id, section_number);
 
 -- =========================================================================
 -- SECURE DOWNWARD VOTE TRACING FUNCTION
