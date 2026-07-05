@@ -65,7 +65,7 @@ async def initialize_db_schema() -> None:
 
     try:
         # 1. Acquire a raw connection out of the SQLAlchemy engine pool
-        async with engine.connect() as conn:
+        async with engine.begin() as conn:
             # 2. Extract the underlying raw asyncpg connection object
             raw_asyncpg_conn = await conn.get_raw_connection()
             
