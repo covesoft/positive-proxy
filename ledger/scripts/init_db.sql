@@ -129,6 +129,7 @@ CREATE OR REPLACE FUNCTION positive_proxy.track_my_vote(voter_uuid UUID, target_
 RETURNS TABLE (step INT, proxy_holder_name VARCHAR, final_vote VARCHAR) AS $$
 BEGIN
     RETURN QUERY
+    -- Base case: Find who I explicitly proxied this bill to, or fallback to global
     WITH RECURSIVE downstream_chain AS (
         -- Wrap the base case in parentheses so LIMIT/ORDER BY apply only here
         (SELECT
