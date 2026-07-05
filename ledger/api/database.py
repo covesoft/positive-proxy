@@ -18,6 +18,8 @@ copyright = """
 
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+import os
+from sqlalchemy import text
 
 from ledger.api.config import settings
 
@@ -46,5 +48,26 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         finally:
             await session.close()
+
+# 4. Initialize the DB schema
+async def initialize_db_schema() -> None:
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sql_path = os.path.join(base_dir, "scripts", "init_db.sql") #warning: this path is hardcoded
+    
+    if not os.path.exists(sql_path):
+        print(f"⚠️ Warning: Initialization script not found at {sql_path}")
+        return
+
+    #print("🚀 Initializing Positive Proxy database schema...")
+    with open(sql_path, "r") as f:
+        sql_script = f.read()
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(sql_script))
+        print("✅ Database schema initialization complete.")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        print("Continuing server startup, but database may be incomplete.")
 
 ### EOF: /positive-proxy/ledger/api/database.py ###

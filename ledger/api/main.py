@@ -18,14 +18,24 @@ copyright = """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
+from ledger.api.database import initialize_db_schema
 from ledger.api.routers import users, proposals, audit
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # This runs EXACTLY once when Render wakes the app up
+    await initialize_db_schema()
+    yield
+    # Cleanup logic on shutdown goes here if necessary
 
 # 1. Initialize the FastAPI Application instance
 app = FastAPI(
     title="Positive Proxy Ledger API",
     description="The robust, auditable backend data engine for public policy making and delegated voting.",
-    version="1.0.0"
+    version="1.0.1",
+    lifespan=lifespan
 )
 
 # 2. Add Security & Middleware (Essential for connecting to your future Webapp frontend)
