@@ -23,6 +23,7 @@ from typing import Optional, List, Dict, Any, Union
 import discord
 from discord.ext import commands
 import httpx
+from config import BASE_URL
 
 # Configure logger
 logger = logging.getLogger("PositiveProxy")
@@ -771,7 +772,7 @@ class PositiveProxyCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         # Core API integration client directed towards running FastAPI loop
-        self.api_client = PositiveProxyClient(base_url="http://localhost:8000")
+        self.api_client = PositiveProxyClient(base_url=BASE_URL)
         self.id_map: Dict[int, str] = {}
 
     @commands.hybrid_command(

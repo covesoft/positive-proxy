@@ -25,6 +25,7 @@ load_dotenv()
 # Tokens (nom nom nom, tasty 🤤😝)
 TOKEN = os.getenv("DISCORD_TOKEN")
 DEBUG_MODE = os.getenv("LOGGING_DEBUG_MODE")
+BASE_URL = os.getenv("BASE_URL")
 if not DEBUG_MODE is None and DEBUG_MODE.lower() == "true":
     LOGGING_DEBUG_MODE = True
 else:
