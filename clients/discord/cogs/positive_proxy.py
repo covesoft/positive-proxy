@@ -196,7 +196,7 @@ class PositiveProxyClient:
             "issue_ids": issue_ids,
             "parent_id": parent_id
         }
-        return await self._request("POST", "/proposals", json=payload)
+        return await self._request("POST", "/proposals/", json=payload)
 
     async def append_section(self, proposal_id: str, section_number: int, title: str, content: str) -> Dict[str, Any]:
         payload = {
