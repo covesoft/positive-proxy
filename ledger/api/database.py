@@ -20,6 +20,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 import os
 from sqlalchemy import text
+import traceback
 
 from ledger.api.config import settings
 
@@ -68,6 +69,7 @@ async def initialize_db_schema() -> None:
         print("✅ Database schema initialization complete.")
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
+        traceback.print_exc()
         print("Continuing server startup, but database may be incomplete.")
 
 ### EOF: /positive-proxy/ledger/api/database.py ###
