@@ -3,4 +3,5 @@ sqlalchemy>=2.0.0
 asyncpg               # This is our async database driver
 pydantic>=2.0
 pydantic-settings     # For handling the .env file effortlessly
+psycopg
 uuid-utils            # For our fast UUIDv7 keys
