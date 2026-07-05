@@ -21,7 +21,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Default local development connection string pointing to PostgreSQL
     # Using 'postgresql+asyncpg' as the driver for non-blocking I/O
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/positive_proxy_db"
+    DATABASE_URL: str = "postgresql+psycopg://positive_proxy_application:password@localhost:5432/positive_proxy_db"
 
     class Config:
         env_file = ".env"
