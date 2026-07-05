@@ -169,7 +169,7 @@ class PositiveProxyClient:
 
     async def register_user(self, user_id: int, username: str) -> Dict[str, Any]:
         payload = {"user_id": str(user_id), "username": username[:100]}
-        return await self._request("POST", "/users", json=payload)
+        return await self._request("POST", "/users/", json=payload)
 
     async def set_proxy(self, user_id: int, target_user_id: int, proposal_id: Optional[str] = None, is_transferable: bool = True) -> Dict[str, Any]:
         payload = {
