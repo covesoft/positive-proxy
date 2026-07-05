@@ -130,17 +130,17 @@ RETURNS TABLE (step INT, proxy_holder_name VARCHAR, final_vote VARCHAR) AS $$
 BEGIN
     RETURN QUERY
     WITH RECURSIVE downstream_chain AS (
-        -- Base Case: Find who I explicitly proxied this bill to, or fallback to global
-        SELECT 
+        -- Wrap the base case in parentheses so LIMIT/ORDER BY apply only here
+        (SELECT
             p.proxy_to_id,
             1 AS depth,
             p.is_transferable
         FROM positive_proxy.proxies p
-        WHERE p.grantor_id = voter_uuid 
+        WHERE p.grantor_id = voter_uuid
           AND p.revoked_at IS NULL
           AND (p.proposal_id = target_proposal_id OR p.proposal_id IS NULL)
         ORDER BY p.proposal_id DESC NULLS LAST
-        LIMIT 1
+        LIMIT 1)
 
         UNION ALL
 
