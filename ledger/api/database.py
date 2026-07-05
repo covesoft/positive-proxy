@@ -65,7 +65,14 @@ async def initialize_db_schema() -> None:
 
     try:
         async with engine.begin() as conn:
-            await conn.execute(text(sql_script))
+                # Split statements by semicolons followed by newlines to protect inner-function semicolons
+                statements = [stmt.strip() for stmt in sql_script.split(";\n") if stmt.strip()]
+                
+                for index, statement in enumerate(statements):
+                    if statement:
+                        # Add the semicolon back to the individual statement
+                        await conn.execute(text(statement + ";"))
+                        
         print("✅ Database schema initialization complete.")
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
