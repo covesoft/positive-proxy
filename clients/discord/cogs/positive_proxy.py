@@ -23,118 +23,10 @@ import discord
 from discord.ext import commands
 import httpx
 from config import BASE_URL
+from beacon import PrivateLayoutView, PrivateView
 
 # Configure logger
 logger = logging.getLogger("PositiveProxy")
-
-# ==========================================
-# BEACON FRAMEWORK TRANSLATION & LAYOUT ENGINE
-# ==========================================
-
-class TextDisplay:
-    """Represents a text block in the declarative layout engine."""
-    def __init__(self, text: str):
-        self.text = text
-
-class Separator:
-    """Represents a clean visual boundary break in the interface."""
-    pass
-
-class Section:
-    """Pairs a body of text with an accessory interaction component (e.g., a button)."""
-    def __init__(self, display: TextDisplay, accessory: discord.ui.Item):
-        self.display = display
-        self.accessory = accessory
-
-class Container:
-    """Hierarchical component layout builder."""
-    def __init__(self):
-        self.items: List[Any] = []
-
-    def add_item(self, item: Any):
-        self.items.append(item)
-
-class PrivateView(discord.ui.View):
-    """Base View enforcing that only the command invoker can trigger callbacks."""
-    def __init__(self, user: Union[discord.User, discord.Member], timeout: Optional[float] = 180.0):
-        super().__init__(timeout=timeout)
-        self.user = user
-        self.message: Optional[discord.Message] = None
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.user.id:
-            await interaction.response.send_message(
-                "❌ You do not have permission to interact with this menu. Please generate your own session.",
-                ephemeral=True
-            )
-            return False
-        return True
-
-    async def on_timeout(self):
-        if self.message:
-            try:
-                await self.message.edit(view=None)
-            except discord.HTTPException:
-                pass
-
-class PrivateLayoutView(PrivateView):
-    """
-    Layout Engine base that translates declarative Container structures 
-    into beautiful Discord Embeds and Action Rows dynamically.
-    """
-    def __init__(self, user: Union[discord.User, discord.Member], timeout: Optional[float] = None):
-        super().__init__(user, timeout=timeout)
-
-    def build_layout(self):
-        """Must be overridden by subclasses to reconstruct components."""
-        pass
-
-    def render_layout(self) -> tuple[discord.Embed, List[discord.ui.Item]]:
-        """
-        Parses container items into:
-        1. A styled Discord Embed (containing TextDisplays, Separators, and Sections)
-        2. A flat list of interaction items (Buttons, Selects, Accessories)
-        """
-        container = Container()
-        # Subclasses populate their layouts by adding items to local container copies
-        self.current_container = container
-        self.build_layout()
-
-        embed = discord.Embed(
-            color=discord.Color.blurple(),
-            description=""
-        )
-        embed.set_author(name="Positive Proxy Ledger", icon_url=self.user.display_avatar.url)
-        
-        control_items: List[discord.ui.Item] = []
-        desc_lines: List[str] = []
-
-        for item in container.items:
-            if isinstance(item, TextDisplay):
-                desc_lines.append(item.text)
-            elif isinstance(item, Separator):
-                desc_lines.append("━" * 28)
-            elif isinstance(item, Section):
-                desc_lines.append(item.display.text)
-                # Link accessory buttons to our interactive grid
-                control_items.append(item.accessory)
-            elif isinstance(item, discord.ui.ActionRow):
-                for row_item in item.children:
-                    control_items.append(row_item)
-            elif isinstance(item, discord.ui.Item):
-                control_items.append(item)
-
-        embed.description = "\n".join(desc_lines)
-        return embed, control_items
-
-    def update_view_components(self):
-        """Regenerates view component structures based on current layout state."""
-        self.clear_items()
-        embed, control_items = self.render_layout()
-        
-        for item in control_items:
-            self.add_item(item)
-        return embed
 
 # ==========================================
 # ASYNCHRONOUS BACKEND API CLIENT
@@ -244,7 +136,7 @@ class VoterDashboardView(PrivateLayoutView):
     Pending Action metrics, and manages direct onboarding on the ledger.
     """
     def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User):
-        super().__init__(user)
+        super().__init__(user, timeout=None)
         self.cog = cog
         self.client = cog.api_client
         self.alert_data: List[Dict[str, Any]] = []
@@ -270,28 +162,36 @@ class VoterDashboardView(PrivateLayoutView):
             logger.error(f"Error initializing dashboard metrics for {self.user.id}: {str(e)}")
 
     def build_layout(self):
-        container = self.current_container
-        container.add_item(TextDisplay(f"## 🏛️ Voter Profile: {self.user.display_name}"))
-        container.add_item(TextDisplay("Welcome to the **Positive Proxy** liquid democracy command centre. Here, you can audit your active delegations, view pending bills, and override provisional choices."))
-        container.add_item(Separator())
+        self.clear_items()
+        display_name = getattr(self.user, "display_name", None) or getattr(self.user, "name", str(self.user))
+        container = discord.ui.Container()
+        container.add_item(discord.ui.TextDisplay(f"## 🏛️ Voter Profile: {display_name}"))
+        container.add_item(discord.ui.TextDisplay(
+            "Welcome to the **Positive Proxy** liquid democracy command centre. "
+            "Here, you can audit your active delegations, view pending bills, and override provisional choices."
+        ))
+        container.add_item(discord.ui.Separator())
 
         # Render Urgency Metrics
         crit_count = len(self.pending_actions.get("critical", []))
         info_count = len(self.pending_actions.get("informational", []))
         
-        container.add_item(TextDisplay(f"🚨 **Critical Actions Required**: `{crit_count}`"))
-        container.add_item(TextDisplay(f"ℹ️ **Override Opportunities**: `{info_count}`"))
-        container.add_item(Separator())
+        container.add_item(discord.ui.TextDisplay(f"🚨 **Critical Actions Required**: `{crit_count}`"))
+        container.add_item(discord.ui.TextDisplay(f"ℹ️ **Override Opportunities**: `{info_count}`"))
+        container.add_item(discord.ui.Separator())
 
         # Render Civic Engagement Alerts (Proxy modifications/ballots)
         if self.alert_data:
-            container.add_item(TextDisplay("### 🔔 Active Sentinel Alerts"))
+            container.add_item(discord.ui.TextDisplay("### 🔔 Active Sentinel Alerts"))
             for alert in self.alert_data[:3]: # Limit to 3 most recent entries
-                container.add_item(TextDisplay(f"• 🔌 *Proxy Action*: {alert.get('message', 'Alert')}\n  -# Depth: {alert.get('depth', 1)} | [Override Active]"))
+                container.add_item(discord.ui.TextDisplay(
+                    f"• 🔌 *Proxy Action*: {alert.get('message', 'Alert')}\n"
+                    f"  -# Depth: {alert.get('depth', 1)} | [Override Active]"
+                ))
         else:
-            container.add_item(TextDisplay("✨ *Your proxies are in perfect alignment. No active sentinel overrides required.*"))
+            container.add_item(discord.ui.TextDisplay("✨ *Your proxies are in perfect alignment. No active sentinel overrides required.*"))
         
-        container.add_item(Separator())
+        container.add_item(discord.ui.Separator())
 
         # Navigation Controls
         btn_proxy = discord.ui.Button(label="Delegation (Proxy)", style=discord.ButtonStyle.primary, emoji="⛓️")
@@ -309,22 +209,24 @@ class VoterDashboardView(PrivateLayoutView):
         row.add_item(btn_audit)
         container.add_item(row)
 
+        self.add_item(container)
+
     async def navigate_proxy(self, interaction: discord.Interaction):
         view = ProxyWorkspaceView(self.cog, self.user, parent_view=self)
-        embed = view.update_view_components()
-        await interaction.response.edit_message(embed=embed, view=view)
+        view.build_layout()
+        await interaction.response.edit_message(view=view)
 
     async def navigate_legislative(self, interaction: discord.Interaction):
         # We start with page 1. In a live system, templates would be loaded from proposals endpoint
         view = LegislativeFloorView(self.cog, self.user, parent_view=self)
         await view.initialise_proposals()
-        embed = view.update_view_components()
-        await interaction.response.edit_message(embed=embed, view=view)
+        view.build_layout()
+        await interaction.response.edit_message(view=view)
 
     async def navigate_audit(self, interaction: discord.Interaction):
         view = AuditStationView(self.cog, self.user, parent_view=self)
-        embed = view.update_view_components()
-        await interaction.response.edit_message(embed=embed, view=view)
+        view.build_layout()
+        await interaction.response.edit_message(view=view)
 
 # ==========================================
 # 2. PROXY & DELEGATION MANAGEMENT
@@ -336,20 +238,25 @@ class ProxyWorkspaceView(PrivateLayoutView):
     Empowers users to toggle transitivity locks (transferable vs strict).
     """
     def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, parent_view: VoterDashboardView):
-        super().__init__(user)
+        super().__init__(user, timeout=None)
         self.cog = cog
         self.parent_view = parent_view
         self.is_transferable = True  # Default setting is cascaded delegation
+        self.build_layout()
 
     def build_layout(self):
-        container = self.current_container
-        container.add_item(TextDisplay("## ⛓️ Proxy Delegation Workspace"))
-        container.add_item(TextDisplay("Delegating your ballot passes your voting weight to a trusted proxy. If they vote, their decision carries your weight—unless you explicitly execute a direct ballot override."))
-        container.add_item(Separator())
+        self.clear_items()
+        container = discord.ui.Container()
+        container.add_item(discord.ui.TextDisplay("## ⛓️ Proxy Delegation Workspace"))
+        container.add_item(discord.ui.TextDisplay(
+            "Delegating your ballot passes your voting weight to a trusted proxy. "
+            "If they vote, their decision carries your weight—unless you explicitly execute a direct ballot override."
+        ))
+        container.add_item(discord.ui.Separator())
 
         trans_status = "🟩 **Cascading Chain Allowed (Transferable)**" if self.is_transferable else "🟥 **Strict Single Hop (Non-Transferable)**"
-        container.add_item(TextDisplay(f"Current Path Configuration:\n{trans_status}"))
-        container.add_item(Separator())
+        container.add_item(discord.ui.TextDisplay(f"Current Path Configuration:\n{trans_status}"))
+        container.add_item(discord.ui.Separator())
 
         # Option configuration buttons
         btn_toggle = discord.ui.Button(
@@ -378,15 +285,16 @@ class ProxyWorkspaceView(PrivateLayoutView):
         row.add_item(btn_assign)
         row.add_item(btn_back)
         container.add_item(row)
+        self.add_item(container)
 
     async def toggle_transitivity(self, interaction: discord.Interaction):
         self.is_transferable = not self.is_transferable
-        embed = self.update_view_components()
-        await interaction.response.edit_message(embed=embed, view=self)
+        self.build_layout()
+        await interaction.response.edit_message(view=self)
 
     async def assign_proxy_flow(self, interaction: discord.Interaction):
         # Spawns a user select interaction menu
-        view = discord.ui.View(timeout=180)
+        view = PrivateView(self.user, timeout=180)
         user_select = discord.ui.UserSelect(placeholder="Select representative to delegate...")
 
         async def select_callback(interaction: discord.Interaction):
@@ -435,8 +343,8 @@ class ProxyWorkspaceView(PrivateLayoutView):
 
     async def back_to_dashboard(self, interaction: discord.Interaction):
         await self.parent_view.initialise_data()
-        embed = self.parent_view.update_view_components()
-        await interaction.response.edit_message(embed=embed, view=self.parent_view)
+        self.parent_view.build_layout()
+        await interaction.response.edit_message(view=self.parent_view)
 
 # ==========================================
 # 3. LEGISLATIVE FLOOR & BALLOT OVERRIDES
@@ -448,20 +356,21 @@ class LegislativeFloorView(PrivateLayoutView):
     Supports in-place section inspection, direct overrides, and path traces.
     """
     def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, parent_view: VoterDashboardView):
-        super().__init__(user)
+        super().__init__(user, timeout=None)
         self.cog = cog
         self.parent_view = parent_view
         self.proposals: List[Dict[str, Any]] = []
         self.page = 1
         self.per_page = 3
         self.total_pages = 1
+        self.build_layout()
 
     async def initialise_proposals(self):
         """Fetch real-time proposals in the active ecosystem."""
         try:
             # Under a complete implementation, endpoints returns listed dicts.
             # We mock the response elements for structure if backend returns empty
-            response = await self.cog.api_client._request("GET", "/proposals")
+            response = await self.cog.api_client._request("GET", "/proposals/")
             self.proposals = response.get("proposals", [])
         except Exception:
             # Fallback mock template list to ensure operational robustness
@@ -484,10 +393,14 @@ class LegislativeFloorView(PrivateLayoutView):
         self.total_pages = max(((len(self.proposals) - 1) // self.per_page + 1), 1)
 
     def build_layout(self):
-        container = self.current_container
-        container.add_item(TextDisplay("## 📜 The Legislative Floor"))
-        container.add_item(TextDisplay("Review active community proposals and bills. Fork existing works, trace delegation chains, or cast your final vote."))
-        container.add_item(Separator())
+        self.clear_items()
+        container = discord.ui.Container()
+        container.add_item(discord.ui.TextDisplay("## 📜 The Legislative Floor"))
+        container.add_item(discord.ui.TextDisplay(
+            "Review active community proposals and bills. "
+            "Fork existing works, trace delegation chains, or cast your final vote."
+        ))
+        container.add_item(discord.ui.Separator())
 
         start = (self.page - 1) * self.per_page
         end = start + self.per_page
@@ -505,17 +418,16 @@ class LegislativeFloorView(PrivateLayoutView):
             btn_manage = discord.ui.Button(
                 label="Manage / Vote", 
                 style=discord.ButtonStyle.secondary,
-                custom_id=f"manage_{prop_id}"
             )
-            # Create a localized closure capturing the specific proposal reference
-            async def make_callback(p=prop):
-                return lambda interaction: self.manage_proposal(interaction, p)
-            
-            btn_manage.callback = asyncio.run_coroutine_threadsafe(make_callback(), asyncio.get_event_loop()).result()
-            container.add_item(Section(TextDisplay(content_block), accessory=btn_manage))
+            # Closure capturing the proposal payload for this specific button.
+            async def manage_callback(interaction: discord.Interaction, p: Dict[str, Any] = prop):
+                await self.manage_proposal(interaction, p)
 
-        container.add_item(TextDisplay(f"-# Page {self.page} of {self.total_pages}"))
-        container.add_item(Separator())
+            btn_manage.callback = manage_callback
+            container.add_item(discord.ui.Section(discord.ui.TextDisplay(content_block), accessory=btn_manage))
+
+        container.add_item(discord.ui.TextDisplay(f"-# Page {self.page} of {self.total_pages}"))
+        container.add_item(discord.ui.Separator())
 
         # Pagination Interactions
         btn_prev = discord.ui.Button(emoji="◀️", style=discord.ButtonStyle.primary, disabled=self.page == 1)
@@ -532,27 +444,28 @@ class LegislativeFloorView(PrivateLayoutView):
         row.add_item(btn_next)
         row.add_item(btn_back)
         container.add_item(row)
+        self.add_item(container)
 
     async def prev_page(self, interaction: discord.Interaction):
         self.page -= 1
-        embed = self.update_view_components()
-        await interaction.response.edit_message(embed=embed, view=self)
+        self.build_layout()
+        await interaction.response.edit_message(view=self)
 
     async def next_page(self, interaction: discord.Interaction):
         self.page += 1
-        embed = self.update_view_components()
-        await interaction.response.edit_message(embed=embed, view=self)
+        self.build_layout()
+        await interaction.response.edit_message(view=self)
 
     async def back_to_dashboard(self, interaction: discord.Interaction):
         await self.parent_view.initialise_data()
-        embed = self.parent_view.update_view_components()
-        await interaction.response.edit_message(embed=embed, view=self.parent_view)
+        self.parent_view.build_layout()
+        await interaction.response.edit_message(view=self.parent_view)
 
     async def manage_proposal(self, interaction: discord.Interaction, proposal: Dict[str, Any]):
         """Transfers interaction focus to specialized operations for a single proposal."""
         view = ProposalInspectorView(self.cog, self.user, proposal, parent_view=self)
-        embed = view.update_view_components()
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        view.build_layout()
+        await interaction.response.send_message(view=view, ephemeral=True)
 
 # ==========================================
 # PROPOSAL INSPECTOR VIEW
@@ -564,21 +477,23 @@ class ProposalInspectorView(PrivateLayoutView):
     Supports casting override votes, path tracing, and structural forks.
     """
     def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, proposal: Dict[str, Any], parent_view: LegislativeFloorView):
-        super().__init__(user)
+        super().__init__(user, timeout=None)
         self.cog = cog
         self.proposal = proposal
         self.parent_view = parent_view
+        self.build_layout()
 
     def build_layout(self):
-        container = self.current_container
+        self.clear_items()
+        container = discord.ui.Container()
         title = self.proposal.get("title")
         summary = self.proposal.get("summary")
         status = self.proposal.get("status", "draft").upper()
         prop_id = self.proposal.get("id")
 
-        container.add_item(TextDisplay(f"## 🧐 Managing: {title}"))
-        container.add_item(TextDisplay(f"**Status**: `{status}` | **Proposal ID**: `{prop_id}`\n\n{summary}"))
-        container.add_item(Separator())
+        container.add_item(discord.ui.TextDisplay(f"## 🧐 Managing: {title}"))
+        container.add_item(discord.ui.TextDisplay(f"**Status**: `{status}` | **Proposal ID**: `{prop_id}`\n\n{summary}"))
+        container.add_item(discord.ui.Separator())
 
         # Context-dependent commands
         if status == "BILL":
@@ -604,10 +519,11 @@ class ProposalInspectorView(PrivateLayoutView):
             row.add_item(btn_promote)
             row.add_item(btn_fork)
             container.add_item(row)
+        self.add_item(container)
 
     async def cast_direct_ballot(self, interaction: discord.Interaction):
         """Shows immediate vote input buttons representing direct ledger overrides."""
-        view = discord.ui.View(timeout=120)
+        view = PrivateView(self.user, timeout=120)
         prop_id = self.proposal.get("id")
         if prop_id is None:
             await interaction.response.send_message("Could not resolve Proposal ID.", ephemeral=True)
@@ -679,13 +595,14 @@ class ProposalInspectorView(PrivateLayoutView):
             return
         try:
             await self.cog.api_client.declare_bill(prop_id)
-            await interaction.response.send_message(
+            # Instantly update local mock list state to avoid stale display
+            self.proposal["status"] = "bill"
+            self.build_layout()
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send(
                 f"🚀 Proposal `{prop_id}` successfully promoted to **Bill**. Text frozen; voting floor open.",
                 ephemeral=True
             )
-            # Instantly update local mock list state to avoid stale display
-            self.proposal["status"] = "bill"
-            self.update_view_components()
         except Exception as e:
             await interaction.response.send_message(f"❌ State promotion failed: {str(e)}", ephemeral=True)
 
@@ -718,15 +635,20 @@ class AuditStationView(PrivateLayoutView):
     block-hash auditing, and mathematical evaluations of representative distribution.
     """
     def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, parent_view: VoterDashboardView):
-        super().__init__(user)
+        super().__init__(user, timeout=None)
         self.cog = cog
         self.parent_view = parent_view
+        self.build_layout()
 
     def build_layout(self):
-        container = self.current_container
-        container.add_item(TextDisplay("## 🛡️ Mathematical & Cryptographic Audit Station"))
-        container.add_item(TextDisplay("Ensure historical integrity using zero-trust proofs. Monitor power concentration metrics to detect democratic imbalance."))
-        container.add_item(Separator())
+        self.clear_items()
+        container = discord.ui.Container()
+        container.add_item(discord.ui.TextDisplay("## 🛡️ Mathematical & Cryptographic Audit Station"))
+        container.add_item(discord.ui.TextDisplay(
+            "Ensure historical integrity using zero-trust proofs. "
+            "Monitor power concentration metrics to detect democratic imbalance."
+        ))
+        container.add_item(discord.ui.Separator())
 
         btn_snapshot = discord.ui.Button(label="Audit Master Ledger Snapshot", style=discord.ButtonStyle.primary, emoji="⛓️")
         btn_snapshot.callback = self.verify_master_snapshot
@@ -742,6 +664,7 @@ class AuditStationView(PrivateLayoutView):
         row.add_item(btn_gini)
         row.add_item(btn_back)
         container.add_item(row)
+        self.add_item(container)
 
     async def verify_master_snapshot(self, interaction: discord.Interaction):
         """Verifies the global blockchain master hash using deep verification checks."""
@@ -781,8 +704,8 @@ class AuditStationView(PrivateLayoutView):
 
     async def back_to_dashboard(self, interaction: discord.Interaction):
         await self.parent_view.initialise_data()
-        embed = self.parent_view.update_view_components()
-        await interaction.response.edit_message(embed=embed, view=self.parent_view)
+        self.parent_view.build_layout()
+        await interaction.response.edit_message(view=self.parent_view)
 
 # ==========================================
 # 5. COG ARCHITECTURE INTEGRATION
@@ -813,11 +736,11 @@ class PositiveProxyCog(commands.Cog):
         # Instantiate and populate the central state representation dashboard
         view = VoterDashboardView(self, ctx.author)
         await view.initialise_data()
-        embed = view.update_view_components()
+        view.build_layout()
         
         # Store message handles for automated timeouts
-        message = await ctx.send(embed=embed, view=view, ephemeral=True)
-        view.message = message
+        message = await ctx.send(view=view, ephemeral=True)
+        view.message = message  # Optional: kept for future timeouts
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PositiveProxyCog(bot))
