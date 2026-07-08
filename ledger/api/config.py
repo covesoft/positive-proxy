@@ -17,14 +17,20 @@ copyright = """
     along with this program.  If not, see <https://www.gnu.org/licenses/>."""
 
 from pydantic_settings import BaseSettings
+import dotenv
+from pathlib import Path
+
+base_dir = Path(__file__).resolve().parent
+env_path = str(base_dir / ".env")
+env = dotenv.load_dotenv(env_path)
+
 
 class Settings(BaseSettings):
-    # Default local development connection string pointing to PostgreSQL
-    # Using 'postgresql+asyncpg' as the driver for non-blocking I/O
-    DATABASE_URL: str = "postgresql+psycopg://positive_proxy_application:password@localhost:5432/positive_proxy_db"
+    DATABASE_URL: str = None
 
     class Config:
-        env_file = ".env"
+        env_file = env_path
+
 
 settings = Settings()
 
