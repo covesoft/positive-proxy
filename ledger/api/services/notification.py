@@ -37,10 +37,10 @@ async def check_proxy_action_alerts(db: AsyncSession, user_id: UUID) -> list[dic
     # but their downstream proxy chain HAS cast a ballot.
     query = text("""
         WITH RECURSIVE proxy_chain AS (
-            SELECT :voter_id::uuid AS current_voter, 0 AS depth, ARRAY[:voter_id::uuid] AS path, TRUE AS transferable
-            
+            SELECT CAST(:voter_id AS UUID) AS current_voter, 0 AS depth, ARRAY[CAST(:voter_id AS UUID)] AS path, TRUE AS transferable
+
             UNION ALL
-            
+
             SELECT p.proxy_to_id, pc.depth + 1, pc.path || p.proxy_to_id, p.is_transferable
             FROM proxy_chain pc
             JOIN positive_proxy.proxies p ON pc.current_voter = p.grantor_id
@@ -62,11 +62,11 @@ async def check_proxy_action_alerts(db: AsyncSession, user_id: UUID) -> list[dic
           -- Exclude if the user themselves already cast a direct ballot overriding the proxy
           AND NOT EXISTS (
               SELECT 1 FROM positive_proxy.ballots 
-              WHERE voter_id = :voter_id AND proposal_id = prop.proposal_id
+              WHERE voter_id = CAST(:voter_id AS UUID) AND proposal_id = prop.proposal_id
           )
         ORDER BY prop.proposal_id, pc.depth ASC;
     """)
-    
+
     result = await db.execute(query, {"voter_id": user_id})
     rows = result.fetchall()
     

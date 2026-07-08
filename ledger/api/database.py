@@ -53,26 +53,25 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 # 4. Initialize the DB schema
 async def initialize_db_schema() -> None:
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sql_path = os.path.join(base_dir, "scripts", "init_db.sql") #warning: this path is hardcoded
-    
+    sql_path = os.path.join(base_dir, "scripts", "init_db.sql")
+
     if not os.path.exists(sql_path):
         print(f"⚠️ Warning: Initialization script not found at {sql_path}")
         return
 
-    #print("🚀 Initializing Positive Proxy database schema...")
     with open(sql_path, "r") as f:
         sql_script = f.read()
 
     try:
         # 1. Acquire a raw connection out of the SQLAlchemy engine pool
         async with engine.begin() as conn:
-            # 2. Extract the underlying raw asyncpg connection object
-            raw_asyncpg_conn = await conn.get_raw_connection()
-            
-            # 3. Access the driver connection object to run the whole file safely
-            # driver_connection allows executing raw script blobs containing internal function semicolons
-            await raw_asyncpg_conn.driver_connection.execute(sql_script)
-            
+            # 2. Extract the underlying raw psycopg connection object
+            raw_conn = await conn.get_raw_connection()
+
+            # 3. Open a native psycopg async cursor to run the multi-statement script safely
+            async with raw_conn.driver_connection.cursor() as cursor:
+                await cursor.execute(sql_script)
+
         print("✅ Database schema initialization complete.")
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
