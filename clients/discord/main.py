@@ -20,7 +20,7 @@ from beacon import Bot
 import discord
 import logging
 from logging.handlers import RotatingFileHandler
-from config import TOKEN, LOGGING_DEBUG_MODE
+from config import TOKEN, LOGGING_DEBUG_MODE, PROXY_USERNAME, PROXY_PASSWORD
 import os
 import traceback
 import asyncio
@@ -62,7 +62,8 @@ intents.dm_messages = True
 allowed_mentions = discord.AllowedMentions(replied_user=False)
 BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
-bot = Bot(command_prefix="!", intents=intents, minimal_cacheing=True, allowed_mentions=allowed_mentions, version_file="VERSION.txt", accent_colour=discord.Colour.from_rgb(112, 206, 24), secure_mode=True)
+proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@2.57.21.2:7239/"
+bot = Bot(command_prefix="!", intents=intents, minimal_cacheing=True, allowed_mentions=allowed_mentions, version_file="VERSION.txt", accent_colour=discord.Colour.from_rgb(112, 206, 24), secure_mode=True, proxy=proxy)
 
 if __name__ == "__main__":
     async def main_async():
