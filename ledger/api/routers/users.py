@@ -47,7 +47,7 @@ async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db))
         return user_record
 
     # Generate the UUID as a string immediately to prevent psycopg adaptation errors
-    generated_id = str(uuid.uuid4())
+    generated_id = (uuid.uuid4())
 
     new_user = User(
         user_id=generated_id,
