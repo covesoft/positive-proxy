@@ -4,10 +4,7 @@ from aiohttp import web
 import asyncio
 import os
 
-try:
-    from config import MONITOR_PORT
-except ImportError:
-    MONITOR_PORT = 8080
+MONITOR_PORT = 8080
 
 PORT = int(os.environ.get("PORT", MONITOR_PORT))
 
@@ -76,6 +73,7 @@ class StatusMonitor(commands.Cog):
                 if hasattr(self.bot, 'logger'):
                     self.bot.logger.error(f"Could not send DM to owner {owner_id}: {e}")
 
+    # pyrefly: ignore [bad-override]
     def cog_unload(self):
         """Cleans up the web server resources when the cog is unloaded."""
         self.server_task.cancel()

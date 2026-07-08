@@ -17,7 +17,6 @@ copyright = """
     along with this program.  If not, see <https://www.gnu.org/licenses/>."""
 
 import asyncio
-import hashlib
 import logging
 from typing import Optional, List, Dict, Any, Union
 import discord
@@ -244,7 +243,7 @@ class VoterDashboardView(PrivateLayoutView):
     The central navigation hub for voters. Realises real-time Alerts, 
     Pending Action metrics, and manages direct onboarding on the ledger.
     """
-    def __init__(self, cog: "PositiveProxyCog", user: discord.Member):
+    def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User):
         super().__init__(user)
         self.cog = cog
         self.client = cog.api_client
@@ -259,6 +258,9 @@ class VoterDashboardView(PrivateLayoutView):
 
             # 2. Extract and cache the system-agnostic UUID string returned by the backend
             backend_uuid = user_record.get("user_id")
+            if backend_uuid is None:
+                logger.error(f"Failed to onboard user {self.user.id}: backend returned null ID.")
+                return
             self.cog.id_map[self.user.id] = backend_uuid
 
             # 3. Swap out the Discord snowflake ID for the true backend UUID across dependent endpoints
@@ -333,7 +335,7 @@ class ProxyWorkspaceView(PrivateLayoutView):
     Manages global or proposal-targeted proxy mappings.
     Empowers users to toggle transitivity locks (transferable vs strict).
     """
-    def __init__(self, cog: "PositiveProxyCog", user: discord.Member, parent_view: VoterDashboardView):
+    def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, parent_view: VoterDashboardView):
         super().__init__(user)
         self.cog = cog
         self.parent_view = parent_view
@@ -387,18 +389,28 @@ class ProxyWorkspaceView(PrivateLayoutView):
         view = discord.ui.View(timeout=180)
         user_select = discord.ui.UserSelect(placeholder="Select representative to delegate...")
 
-        async def select_callback(inter: discord.Interaction):
+        async def select_callback(interaction: discord.Interaction):
             target_user = user_select.values[0]
 
             # Retrieve cached tracking UUIDs for both entities
             grantor_uuid = self.cog.id_map.get(self.user.id)
+            if grantor_uuid is None:
+                await interaction.response.send_message(f"Could not resolve a valid ID for {self.user.display_name}.", ephemeral=True)
+                return
             target_uuid = self.cog.id_map.get(target_user.id)
 
             if not target_uuid:
                 # If target isn't in cache, quickly hit endpoint to register/find them
                 target_record = await self.cog.api_client.register_user(target_user.id, target_user.display_name)
                 target_uuid = target_record.get("user_id")
+                if target_uuid is None:
+                    await interaction.response.send_message(
+                        f"Could not resolve a valid system ID for {target_user.display_name}.",
+                        ephemeral=True
+                    )
+                    return
                 self.cog.id_map[target_user.id] = target_uuid
+
 
             try:
                 await self.cog.api_client.set_proxy(
@@ -407,12 +419,12 @@ class ProxyWorkspaceView(PrivateLayoutView):
                     proposal_id=None,
                     is_transferable=self.is_transferable
                 )
-                await inter.response.send_message(
+                await interaction.response.send_message(
                     f"✅ Successfully delegated global ballot weight to **{target_user.display_name}**.",
                     ephemeral=True
                 )
             except Exception as e:
-                await inter.response.send_message(
+                await interaction.response.send_message(
                     f"❌ Failed to submit delegation path to ledger: {str(e)}",
                     ephemeral=True
                 )
@@ -435,7 +447,7 @@ class LegislativeFloorView(PrivateLayoutView):
     Paginated legislative ledger displaying active drafts and bills.
     Supports in-place section inspection, direct overrides, and path traces.
     """
-    def __init__(self, cog: "PositiveProxyCog", user: discord.Member, parent_view: VoterDashboardView):
+    def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, parent_view: VoterDashboardView):
         super().__init__(user)
         self.cog = cog
         self.parent_view = parent_view
@@ -497,7 +509,7 @@ class LegislativeFloorView(PrivateLayoutView):
             )
             # Create a localized closure capturing the specific proposal reference
             async def make_callback(p=prop):
-                return lambda inter: self.manage_proposal(inter, p)
+                return lambda interaction: self.manage_proposal(interaction, p)
             
             btn_manage.callback = asyncio.run_coroutine_threadsafe(make_callback(), asyncio.get_event_loop()).result()
             container.add_item(Section(TextDisplay(content_block), accessory=btn_manage))
@@ -551,7 +563,7 @@ class ProposalInspectorView(PrivateLayoutView):
     Sub-view dashboard for managing a single proposal draft or bill.
     Supports casting override votes, path tracing, and structural forks.
     """
-    def __init__(self, cog: "PositiveProxyCog", user: discord.Member, proposal: Dict[str, Any], parent_view: LegislativeFloorView):
+    def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, proposal: Dict[str, Any], parent_view: LegislativeFloorView):
         super().__init__(user)
         self.cog = cog
         self.proposal = proposal
@@ -597,9 +609,15 @@ class ProposalInspectorView(PrivateLayoutView):
         """Shows immediate vote input buttons representing direct ledger overrides."""
         view = discord.ui.View(timeout=120)
         prop_id = self.proposal.get("id")
+        if prop_id is None:
+            await interaction.response.send_message("Could not resolve Proposal ID.", ephemeral=True)
+            return
 
         # ──► FIX: Fetch the user's UUID from the cog's id_map cache
         user_uuid = self.cog.id_map.get(self.user.id)
+        if user_uuid is None:
+            await interaction.response.send_message("Could not resolve User ID.", ephemeral=True)
+            return
 
         async def vote_callback(inter: discord.Interaction, choice: str):
             try:
@@ -613,13 +631,13 @@ class ProposalInspectorView(PrivateLayoutView):
                 await inter.response.send_message(f"❌ Failed to commit ballot to database ledger: {str(e)}", ephemeral=True)
 
         yea_btn = discord.ui.Button(label="Yea", style=discord.ButtonStyle.success)
-        yea_btn.callback = lambda i: vote_callback(i, "yea")
+        yea_btn.callback = lambda interaction: vote_callback(interaction, "yea")
 
         nay_btn = discord.ui.Button(label="Nay", style=discord.ButtonStyle.danger)
-        nay_btn.callback = lambda i: vote_callback(i, "nay")
+        nay_btn.callback = lambda interaction: vote_callback(interaction, "nay")
 
         abstain_btn = discord.ui.Button(label="Abstain", style=discord.ButtonStyle.secondary)
-        abstain_btn.callback = lambda i: vote_callback(i, "abstain")
+        abstain_btn.callback = lambda interaction: vote_callback(interaction, "abstain")
 
         view.add_item(yea_btn)
         view.add_item(nay_btn)
@@ -630,10 +648,14 @@ class ProposalInspectorView(PrivateLayoutView):
     async def trace_delegation(self, interaction: discord.Interaction):
         """Calculates and traces the delegation path across downstream representatives."""
         prop_id = self.proposal.get("id")
-
+        if prop_id is None:
+            await interaction.response.send_message("Could not resolve Proposal ID.", ephemeral=True)
+            return
         # ──► FIX: Fetch the user's UUID from the cog's id_map cache
         user_uuid = self.cog.id_map.get(self.user.id)
-
+        if user_uuid is None:
+            await interaction.response.send_message("Could not resolve User ID.", ephemeral=True)
+            return
         try:
             # ──► FIX: Pass user_uuid instead of self.user.id
             path_trace = await self.cog.api_client.trace_path(prop_id, user_uuid)
@@ -652,6 +674,9 @@ class ProposalInspectorView(PrivateLayoutView):
 
     async def promote_to_bill(self, interaction: discord.Interaction):
         prop_id = self.proposal.get("id")
+        if prop_id is None:
+            await interaction.response.send_message("Could not resolve Proposal ID.", ephemeral=True)
+            return
         try:
             await self.cog.api_client.declare_bill(prop_id)
             await interaction.response.send_message(
@@ -692,7 +717,7 @@ class AuditStationView(PrivateLayoutView):
     Exposes advanced cryptographic ledger verification tools, master system
     block-hash auditing, and mathematical evaluations of representative distribution.
     """
-    def __init__(self, cog: "PositiveProxyCog", user: discord.Member, parent_view: VoterDashboardView):
+    def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, parent_view: VoterDashboardView):
         super().__init__(user)
         self.cog = cog
         self.parent_view = parent_view
@@ -772,6 +797,8 @@ class PositiveProxyCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         # Core API integration client directed towards running FastAPI loop
+        if BASE_URL is None:
+            raise SystemExit("Set BASE_URL in .env")
         self.api_client = PositiveProxyClient(base_url=BASE_URL)
         self.id_map: Dict[int, str] = {}
 
