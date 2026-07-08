@@ -196,7 +196,7 @@ async def get_pending_action_items(db: AsyncSession, user_id: UUID) -> list[dict
     # 2. Trace the proxy chain logic statement per active bill
     action_check_query = text("""
         WITH RECURSIVE proxy_chain AS (
-            SELECT :voter_id AS current_voter, 0 AS depth, ARRAY[:voter_id::uuid] AS path, TRUE AS transferable
+            SELECT :voter_id::text AS current_voter, 0 AS depth, ARRAY[:voter_id::text] AS path, TRUE AS transferable
             
             UNION ALL
             
@@ -210,7 +210,7 @@ async def get_pending_action_items(db: AsyncSession, user_id: UUID) -> list[dict
         )
         SELECT 
             -- Did the user vote themselves?
-            EXISTS(SELECT 1 FROM positive_proxy.ballots WHERE voter_id = :voter_id AND proposal_id = :proposal_id) as voted_directly,
+            EXISTS(SELECT 1 FROM positive_proxy.ballots WHERE voter_id = :voter_id::text AND proposal_id = :proposal_id) as voted_directly,
             -- Has ANYONE in the proxy chain voted yet?
             (SELECT b.vote_choice FROM proxy_chain pc
              JOIN positive_proxy.ballots b ON b.voter_id = pc.current_voter
