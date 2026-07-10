@@ -141,6 +141,7 @@ class VoterDashboardView(PrivateLayoutView):
         self.client = cog.api_client
         self.alert_data: List[Dict[str, Any]] = []
         self.pending_actions: Dict[str, Any] = {"critical": [], "informational": []}
+        self.message = None
 
     async def initialise_data(self):
         """Pre-fetches essential profile information from backend services."""
@@ -293,58 +294,75 @@ class ProxyWorkspaceView(PrivateLayoutView):
         await interaction.response.edit_message(view=self)
 
     async def assign_proxy_flow(self, interaction: discord.Interaction):
-        # Spawns a user select interaction menu
-        view = PrivateView(self.user, timeout=180)
-        user_select = discord.ui.UserSelect(placeholder="Select representative to delegate...")
-
-        async def select_callback(interaction: discord.Interaction):
-            target_user = user_select.values[0]
-
-            # Retrieve cached tracking UUIDs for both entities
-            grantor_uuid = self.cog.id_map.get(self.user.id)
-            if grantor_uuid is None:
-                await interaction.response.send_message(f"Could not resolve a valid ID for {self.user.display_name}.", ephemeral=True)
-                return
-            target_uuid = self.cog.id_map.get(target_user.id)
-
-            if not target_uuid:
-                # If target isn't in cache, quickly hit endpoint to register/find them
-                target_record = await self.cog.api_client.register_user(target_user.id, target_user.display_name)
-                target_uuid = target_record.get("user_id")
-                if target_uuid is None:
-                    await interaction.response.send_message(
-                        f"Could not resolve a valid system ID for {target_user.display_name}.",
-                        ephemeral=True
-                    )
-                    return
-                self.cog.id_map[target_user.id] = target_uuid
-
-
-            try:
-                await self.cog.api_client.set_proxy(
-                    user_id=grantor_uuid,  # Sent as UUID string
-                    target_user_id=target_uuid,  # Sent as UUID string
-                    proposal_id=None,
-                    is_transferable=self.is_transferable
-                )
-                await interaction.response.send_message(
-                    f"✅ Successfully delegated global ballot weight to **{target_user.display_name}**.",
-                    ephemeral=True
-                )
-            except Exception as e:
-                await interaction.response.send_message(
-                    f"❌ Failed to submit delegation path to ledger: {str(e)}",
-                    ephemeral=True
-                )
-
-        user_select.callback = select_callback
-        view.add_item(user_select)
-        await interaction.response.send_message("Select your delegate representative from the list below:", view=view, ephemeral=True)
+        view = DelegateSelectView(interaction.user, self.cog, self.is_transferable, self)
+        await interaction.response.edit_message(view=view)
 
     async def back_to_dashboard(self, interaction: discord.Interaction):
         await self.parent_view.initialise_data()
         self.parent_view.build_layout()
         await interaction.response.edit_message(view=self.parent_view)
+
+class DelegateSelectView(PrivateLayoutView):
+    def __init__(self, user: discord.Member | discord.User, cog, transferable:bool, parent_view: ProxyWorkspaceView):
+        super().__init__(user, timeout=180)
+        self.user_select = None
+        self.cog = cog
+        self.transferable = transferable
+        self.parent_view = parent_view
+        self.build_layout()
+
+    def build_layout(self):
+        container = discord.ui.Container()
+        container.add_item(discord.ui.TextDisplay("## Select your delegate representative from the list below:"))
+        user_select = discord.ui.UserSelect(placeholder="Select representative to delegate...", min_values=1, max_values=1)
+        user_select.callback = self.select_callback
+        self.user_select = user_select
+        row = discord.ui.ActionRow()
+        row.add_item(user_select)
+        container.add_item(row)
+        self.add_item(container)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        if self.user_select is None:
+            return
+        target_user = self.user_select.values[0]
+
+        # Retrieve cached tracking UUIDs for both entities
+        grantor_uuid = self.cog.id_map.get(self.user.id)
+        if grantor_uuid is None:
+            await interaction.followup.send(f"Could not resolve a valid ID for {self.user.display_name}.",
+                                            ephemeral=True)
+            return
+        target_uuid = self.cog.id_map.get(target_user.id)
+
+        if not target_uuid:
+            # If target isn't in cache, quickly hit endpoint to register/find them
+            target_record = await self.cog.api_client.register_user(target_user.id, target_user.display_name)
+            target_uuid = target_record.get("user_id")
+            if target_uuid is None:
+                await interaction.followup.send(
+                    f"Could not resolve a valid system ID for {target_user.display_name}.",
+                    ephemeral=True
+                )
+                return
+            self.cog.id_map[target_user.id] = target_uuid
+
+        try:
+            await self.cog.api_client.set_proxy(
+                user_id=grantor_uuid,  # Sent as UUID string
+                target_user_id=target_uuid,  # Sent as UUID string
+                proposal_id=None,
+                is_transferable=self.transferable
+            )
+            self.parent_view.build_layout()
+            await interaction.edit_original_response(view=self.parent_view)
+
+        except Exception as e:
+            await interaction.followup.send(
+                f"❌ Failed to submit delegation path to ledger: {str(e)}",
+                ephemeral=True
+            )
 
 # ==========================================
 # 3. LEGISLATIVE FLOOR & BALLOT OVERRIDES
@@ -744,5 +762,6 @@ class PositiveProxyCog(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PositiveProxyCog(bot))
+    await bot.tree.sync()
 
 ### EOF ###
