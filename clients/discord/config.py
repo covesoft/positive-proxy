@@ -33,7 +33,7 @@ if not DEBUG_MODE is None and DEBUG_MODE.lower() == "true":
     LOGGING_DEBUG_MODE = True
 else:
     LOGGING_DEBUG_MODE = False
-if not DEBUG_MODE is None and DEBUG_MODE.lower() == "true":
+if not ENVIRONMENT is None and ENVIRONMENT.lower() == "true":
     DEVELOPMENT_ENVIRONMENT = True
 else:
     DEVELOPMENT_ENVIRONMENT = False
