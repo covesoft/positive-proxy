@@ -1,4 +1,5 @@
 # file: /positive-proxy/clients/discord/main.py
+
 copyright = """
     Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
     Copyright (C) 2026  Joel Spector
@@ -20,7 +21,7 @@ from beacon import Bot
 import discord
 import logging
 from logging.handlers import RotatingFileHandler
-from config import TOKEN, LOGGING_DEBUG_MODE, PROXY_USERNAME, PROXY_PASSWORD
+from config import TOKEN, LOGGING_DEBUG_MODE, PROXY_USERNAME, PROXY_PASSWORD, DEVELOPMENT_ENVIRONMENT
 import os
 import traceback
 import asyncio
@@ -62,8 +63,9 @@ intents.dm_messages = True
 allowed_mentions = discord.AllowedMentions(replied_user=False)
 BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
-proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@38.154.185.97:6370/"
-bot = Bot(command_prefix="!", intents=intents, minimal_cacheing=True, allowed_mentions=allowed_mentions, version_file="VERSION.txt", accent_colour=discord.Colour.from_rgb(112, 206, 24), secure_mode=True, proxy=proxy)
+secure_mode = True if not DEVELOPMENT_ENVIRONMENT else False
+proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@38.154.185.97:6370/" if DEVELOPMENT_ENVIRONMENT else None
+bot = Bot(command_prefix="!", intents=intents, minimal_cacheing=True, allowed_mentions=allowed_mentions, version_file="VERSION.txt", accent_colour=discord.Colour.from_rgb(112, 206, 24), secure_mode=secure_mode, proxy=proxy)
 
 if __name__ == "__main__":
     async def main_async():

@@ -1,4 +1,5 @@
 # file: /positive-proxy/clients/discord/cogs/positive_proxy.py
+
 copyright = """
     Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
     Copyright (C) 2026  Joel Spector
@@ -22,7 +23,7 @@ from typing import Optional, List, Dict, Any, Union
 import discord
 from discord.ext import commands
 import httpx
-from config import BASE_URL
+from config import DEVELOPMENT_ENVIRONMENT
 from beacon import PrivateLayoutView, PrivateView
 
 # Configure logger
@@ -763,9 +764,8 @@ class PositiveProxyCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         # Core API integration client directed towards running FastAPI loop
-        if BASE_URL is None:
-            raise SystemExit("Set BASE_URL in .env")
-        self.api_client = PositiveProxyClient(base_url=BASE_URL)
+        url = "https://positive-proxy.onrender.com"
+        self.api_client = PositiveProxyClient(base_url=url)
         self.id_map: Dict[int, str] = {}
 
     @commands.hybrid_command(
