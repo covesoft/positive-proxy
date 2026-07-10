@@ -148,17 +148,41 @@ class VoterDashboardView(PrivateLayoutView):
         try:
             # 1. Onboard or fetch user record from the ledger
             user_record = await self.client.register_user(self.user.id, self.user.display_name)
+            if isinstance(user_record, list) and user_record:
+                user_record = user_record[0]
 
             # 2. Extract and cache the system-agnostic UUID string returned by the backend
-            backend_uuid = user_record.get("user_id")
+            backend_uuid = user_record.get("user_id") if isinstance(user_record, dict) else None
             if backend_uuid is None:
-                logger.error(f"Failed to onboard user {self.user.id}: backend returned null ID.")
+                logger.error(f"Failed to onboard user {self.user.id}: backend returned null or invalid ID.")
                 return
             self.cog.id_map[self.user.id] = backend_uuid
 
-            # 3. Swap out the Discord snowflake ID for the true backend UUID across dependent endpoints
-            self.alert_data = (await self.client.get_alerts(backend_uuid)).get("alerts", [])
-            self.pending_actions = await self.client.get_pending_actions(backend_uuid)
+            # 3. Handle alerts list/dict response
+            alerts_response = await self.client.get_alerts(backend_uuid)
+            self.alert_data = alerts_response if isinstance(alerts_response, list) else alerts_response.get("alerts",
+                                                                                                            [])
+
+            # 4. Handle pending actions list/dict response
+            actions_response = await self.client.get_pending_actions(backend_uuid)
+
+            if isinstance(actions_response, list):
+                if actions_response and isinstance(actions_response[0], dict) and (
+                        "critical" in actions_response[0] or "informational" in actions_response[0]):
+                    # Case 1: Dict wrapped in a list
+                    self.pending_actions = actions_response[0]
+                else:
+                    # Case 2: Flat list of items. Categorise them if they have a type/urgency key,
+                    # otherwise default them all to critical to ensure they aren't missed.
+                    self.pending_actions = {"critical": [], "informational": []}
+                    for action in actions_response:
+                        if isinstance(action, dict) and action.get("urgency") == "informational":
+                            self.pending_actions["informational"].append(action)
+                        else:
+                            self.pending_actions["critical"].append(action)
+            else:
+                self.pending_actions = actions_response if actions_response else {"critical": [], "informational": []}
+
         except Exception as e:
             logger.error(f"Error initializing dashboard metrics for {self.user.id}: {str(e)}")
 
