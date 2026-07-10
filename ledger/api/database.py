@@ -69,6 +69,7 @@ async def initialize_db_schema() -> None:
             raw_conn = await conn.get_raw_connection()
 
             # 3. Open a native psycopg async cursor to run the multi-statement script safely
+            # pyrefly: ignore [missing-attribute]
             async with raw_conn.driver_connection.cursor() as cursor:
                 await cursor.execute(sql_script)
 

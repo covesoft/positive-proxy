@@ -26,7 +26,7 @@ env = dotenv.load_dotenv(env_path)
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = None
+    DATABASE_URL: str | None = None
 
     class Config:
         env_file = env_path
