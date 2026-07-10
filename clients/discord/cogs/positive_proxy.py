@@ -243,10 +243,11 @@ class VoterDashboardView(PrivateLayoutView):
 
     async def navigate_legislative(self, interaction: discord.Interaction):
         # We start with page 1. In a live system, templates would be loaded from proposals endpoint
+        await interaction.response.defer()
         view = LegislativeFloorView(self.cog, self.user, parent_view=self)
         await view.initialise_proposals()
         view.build_layout()
-        await interaction.response.edit_message(view=view)
+        await interaction.edit_original_response(view=view)
 
     async def navigate_audit(self, interaction: discord.Interaction):
         view = AuditStationView(self.cog, self.user, parent_view=self)
