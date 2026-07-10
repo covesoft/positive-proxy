@@ -208,4 +208,13 @@ async def read_proxy_volume(proposal_id: UUID, user_id: UUID, db: AsyncSession =
         "ballot_volume": row[0] if row else 1
     }
 
+@router.get("/", status_code=status.HTTP_200_OK)
+async def list_proposals(db: AsyncSession = Depends(get_db)):
+    """
+    Retrieves all active community proposals and bills from the ledger.
+    """
+    result = await db.execute(select(Proposal))
+    proposals = result.scalars().all()
+    return {"proposals": proposals}
+
 ### EOF: /positive-proxy/ledger/api/routers/proposals.py ###
