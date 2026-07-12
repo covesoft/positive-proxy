@@ -73,8 +73,7 @@ class StatusMonitor(commands.Cog):
                 if hasattr(self.bot, 'logger'):
                     self.bot.logger.error(f"Could not send DM to owner {owner_id}: {e}")
 
-    # pyrefly: ignore [bad-override]
-    def cog_unload(self):
+    async def cog_unload(self):
         """Cleans up the web server resources when the cog is unloaded."""
         self.server_task.cancel()
         if self.runner:
