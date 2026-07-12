@@ -9,7 +9,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir \
     discord.py \
     python-dotenv \
-    discord-beacon==3.2.6 \
+    discord-beacon==4.1.9 \
     httpx
 
 COPY . .

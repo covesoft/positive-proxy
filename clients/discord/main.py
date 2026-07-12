@@ -17,7 +17,7 @@ copyright = """
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>."""
 
-from beacon import Bot
+from beacon import BeaconAutoShardedBot
 import discord
 import logging
 from logging.handlers import RotatingFileHandler
@@ -64,8 +64,8 @@ allowed_mentions = discord.AllowedMentions(replied_user=False)
 BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
 secure_mode = True if not DEVELOPMENT_ENVIRONMENT else False
-proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@38.154.185.97:6370/" if DEVELOPMENT_ENVIRONMENT else None
-bot = Bot(command_prefix="!", intents=intents, minimal_cacheing=True, allowed_mentions=allowed_mentions, version_file="VERSION.txt", accent_colour=discord.Colour.from_rgb(112, 206, 24), secure_mode=secure_mode, proxy=proxy)
+proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@38.154.185.97:6370/" if not DEVELOPMENT_ENVIRONMENT else None
+bot = BeaconAutoShardedBot(command_prefix="!", intents=intents, minimal_caching=True, allowed_mentions=allowed_mentions, version_file="VERSION.txt", accent_colour=discord.Colour.from_rgb(112, 206, 24), secure_mode=secure_mode, proxy=proxy)
 
 if __name__ == "__main__":
     async def main_async():
