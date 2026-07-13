@@ -787,6 +787,5 @@ class PositiveProxyCog(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PositiveProxyCog(bot))
-    await bot.tree.sync()
 
 ### EOF ###
