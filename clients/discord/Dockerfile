@@ -10,7 +10,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir \
     discord.py \
     python-dotenv \
-    discord-beacon==4.1.13 \
+    discord-beacon==4.1.14 \
     httpx
 
 COPY . .
