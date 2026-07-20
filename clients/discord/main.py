@@ -65,7 +65,7 @@ BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
 secure_mode = True if not DEVELOPMENT_ENVIRONMENT else False
 proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@38.154.185.97:6370/" if not DEVELOPMENT_ENVIRONMENT else None
-bot = BeaconAutoShardedBot(command_prefix="!", intents=intents, minimal_caching=True, allowed_mentions=allowed_mentions, version_file="VERSION.txt", accent_colour=discord.Colour.from_rgb(112, 206, 24), secure_mode=secure_mode, proxy=proxy, shard_count=69)
+bot = BeaconAutoShardedBot(command_prefix="!", intents=intents, minimal_caching=True, allowed_mentions=allowed_mentions, version_file="VERSION.txt", accent_colour=discord.Colour.from_rgb(112, 206, 24), secure_mode=secure_mode, proxy=proxy, shard_count=9)
 
 if __name__ == "__main__":
     async def main_async():
