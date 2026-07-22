@@ -1,5 +1,5 @@
 httpx~=0.28.1
-discord-beacon==4.2.10
+discord-beacon==4.3.0
 discord-py~=2.7.1
 dotenv~=0.9.9
 python-dotenv~=1.2.2

@@ -65,7 +65,29 @@ BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
 secure_mode = True if not DEVELOPMENT_ENVIRONMENT else False
 proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@38.154.185.97:6370/" if not DEVELOPMENT_ENVIRONMENT else None
-bot = BeaconAutoShardedBot(command_prefix="!", intents=intents, minimal_caching=True, allowed_mentions=allowed_mentions, version_file="VERSION.txt", accent_colour=discord.Colour.from_rgb(112, 206, 24), secure_mode=secure_mode, shard_count=2)
+
+
+async def on_shard_ready(shard_id: int):
+    total_shards = bot.shard_count or len(bot.shards)
+    activity_name = f"pivot.quest/spp/positive-proxy/ | {shard_id}/{total_shards}"
+
+    await bot.change_presence(
+        activity=discord.CustomActivity(name=activity_name),
+        shard_id=shard_id
+    )
+
+
+bot = BeaconAutoShardedBot(
+    command_prefix="!",
+    intents=intents,
+    minimal_caching=True,
+    allowed_mentions=allowed_mentions,
+    version_file="VERSION.txt",
+    accent_colour=discord.Colour.from_rgb(112, 206, 24),
+    secure_mode=secure_mode,
+    shard_count=2,
+    on_shard_ready_callback=on_shard_ready
+)
 
 if __name__ == "__main__":
     async def main_async():
