@@ -69,8 +69,7 @@ proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@38.154.185.97:6370/" if not D
 
 async def on_shard_ready(shard_id: int):
     total_shards = bot.shard_count or len(bot.shards)
-    guilds = len(bot.guilds)
-    activity_name = f"{guilds} | {shard_id}/{total_shards}"
+    activity_name = f"Listening to /dashboard | {shard_id}/{total_shards}"
 
     await bot.change_presence(
         activity=discord.CustomActivity(name=activity_name),
