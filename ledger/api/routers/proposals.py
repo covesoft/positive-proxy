@@ -33,6 +33,16 @@ router = APIRouter(prefix="/proposals", tags=["proposals"])
 # 1. STATIC PATHS (Placed at top to prevent router path-trapping)
 # =========================================================================
 
+@router.get("/", response_model=list[ProposalResponse])
+async def list_proposals(db: AsyncSession = Depends(get_db)):
+    """
+    Retrieves a list of all proposals.
+    """
+    result = await db.execute(select(Proposal))
+    proposals = result.scalars().all()
+    return proposals
+
+
 @router.post("/issues", status_code=status.HTTP_201_CREATED)
 async def create_issue(issue_data: IssueCreate, creator_id: UUID, db: AsyncSession = Depends(get_db)):
     """
