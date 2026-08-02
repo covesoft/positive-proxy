@@ -23,7 +23,7 @@ from typing import Optional, List, Dict, Any, Union
 import discord
 from discord.ext import commands
 import httpx
-from config import DEVELOPMENT_ENVIRONMENT
+from config import BASE_URL
 from beacon import PrivateLayoutView, PrivateView
 
 # Configure logger
@@ -775,7 +775,7 @@ class PositiveProxyCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         # Core API integration client directed towards running FastAPI loop
-        url = "https://positive-proxy.onrender.com"
+        url = BASE_URL
         self.api_client = PositiveProxyClient(base_url=url)
         self.id_map: Dict[int, str] = {}
 

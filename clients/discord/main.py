@@ -21,7 +21,7 @@ from beacon import BeaconAutoShardedBot
 import discord
 import logging
 from logging.handlers import RotatingFileHandler
-from config import TOKEN, LOGGING_DEBUG_MODE, PROXY_USERNAME, PROXY_PASSWORD, DEVELOPMENT_ENVIRONMENT
+from config import TOKEN, LOGGING_DEBUG_MODE, PROXY_USERNAME, PROXY_PASSWORD
 import os
 import traceback
 import asyncio
@@ -63,9 +63,7 @@ intents.dm_messages = True
 allowed_mentions = discord.AllowedMentions(replied_user=False)
 BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
-secure_mode = True if not DEVELOPMENT_ENVIRONMENT else False
-proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@38.154.185.97:6370/" if not DEVELOPMENT_ENVIRONMENT else None
-
+proxy = f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@38.154.185.97:6370/"
 
 async def on_shard_ready(shard_id: int):
     total_shards = bot.shard_count or len(bot.shards)
