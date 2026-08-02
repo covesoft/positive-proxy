@@ -399,6 +399,7 @@ class LegislativeFloorView(PrivateLayoutView):
     Paginated legislative ledger displaying active drafts and bills.
     Supports in-place section inspection, direct overrides, and path traces.
     """
+
     def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, parent_view: VoterDashboardView):
         super().__init__(user, timeout=None)
         self.cog = cog
@@ -407,34 +408,30 @@ class LegislativeFloorView(PrivateLayoutView):
         self.page = 1
         self.per_page = 3
         self.total_pages = 1
-        self.build_layout()
 
     async def initialise_proposals(self):
         """Fetch real-time proposals in the active ecosystem."""
         try:
-            # Under a complete implementation, endpoints returns listed dicts.
-            # We mock the response elements for structure if backend returns empty
             response = await self.cog.api_client._request("GET", "/proposals/")
-            self.proposals = response.get("proposals", [])
-        except Exception:
-            # Fallback mock template list to ensure operational robustness
-            self.proposals = [
-                {
-                    "id": "bill-001",
-                    "title": "Decentralised Carbon Mitigation Initiative",
-                    "summary": "Establishes a local localized tracking quota system managed by smart distributed ledgers.",
-                    "status": "bill",
-                    "issue_ids": ["climate", "finance"]
-                },
-                {
-                    "id": "draft-002",
-                    "title": "Community Wireless Bandwidth Access Act",
-                    "summary": "A proposal to democratise regional sub-bands for community-managed meshes.",
-                    "status": "draft",
-                    "issue_ids": ["tech", "telecom"]
-                }
-            ]
-        self.total_pages = max(((len(self.proposals) - 1) // self.per_page + 1), 1)
+
+            # FIX: Properly check if response is a list or dict wrapper
+            if isinstance(response, list):
+                self.proposals = response
+            elif isinstance(response, dict):
+                self.proposals = response.get("proposals", [])
+            else:
+                self.proposals = []
+
+        except Exception as e:
+            self.cog.bot.logger.error(f"Failed to fetch proposals: {e}")
+            self.proposals = []
+
+        # FIX: Ensure total_pages is at least 1 even when self.proposals is empty
+        total_items = len(self.proposals)
+        if total_items == 0:
+            self.total_pages = 1
+        else:
+            self.total_pages = max((total_items - 1) // self.per_page + 1, 1)
 
     def build_layout(self):
         self.clear_items()
@@ -446,38 +443,51 @@ class LegislativeFloorView(PrivateLayoutView):
         ))
         container.add_item(discord.ui.Separator())
 
-        start = (self.page - 1) * self.per_page
-        end = start + self.per_page
-        current_slice = self.proposals[start:end]
+        if not self.proposals:
+            container.add_item(discord.ui.TextDisplay(
+                "📭 **No active proposals found.**\n"
+                "*There are currently no open bills or active drafts on the floor.*"
+            ))
+        else:
+            start = (self.page - 1) * self.per_page
+            end = start + self.per_page
+            current_slice = self.proposals[start:end]
 
-        for prop in current_slice:
-            prop_id = prop.get("id")
-            title = prop.get("title")
-            summary = prop.get("summary")
-            status = prop.get("status", "draft").upper()
-            
-            content_block = f"### [{status}] {title}\n*ID: {prop_id}*\n{summary}\n"
-            
-            # Action button mapped to proposal action menu
-            btn_manage = discord.ui.Button(
-                label="Manage / Vote", 
-                style=discord.ButtonStyle.secondary,
-            )
-            # Closure capturing the proposal payload for this specific button.
-            async def manage_callback(interaction: discord.Interaction, p: Dict[str, Any] = prop):
-                await self.manage_proposal(interaction, p)
+            for prop in current_slice:
+                # Handle both dict access or fallback schema naming ('proposal_id' vs 'id')
+                prop_id = prop.get("proposal_id") or prop.get("id", "Unknown")
+                title = prop.get("title", "Untitled Proposal")
+                summary = prop.get("summary") or prop.get("description", "No summary provided.")
+                status = prop.get("status", "draft").upper()
 
-            btn_manage.callback = manage_callback
-            container.add_item(discord.ui.Section(discord.ui.TextDisplay(content_block), accessory=btn_manage))
+                content_block = f"### [{status}] {title}\n*ID: {prop_id}*\n{summary}\n"
+
+                btn_manage = discord.ui.Button(
+                    label="Manage / Vote",
+                    style=discord.ButtonStyle.secondary,
+                )
+
+                async def manage_callback(interaction: discord.Interaction, p: Dict[str, Any] = prop):
+                    await self.manage_proposal(interaction, p)
+
+                btn_manage.callback = manage_callback
+                container.add_item(discord.ui.Section(discord.ui.TextDisplay(content_block), accessory=btn_manage))
 
         container.add_item(discord.ui.TextDisplay(f"-# Page {self.page} of {self.total_pages}"))
         container.add_item(discord.ui.Separator())
 
-        # Pagination Interactions
-        btn_prev = discord.ui.Button(emoji="◀️", style=discord.ButtonStyle.primary, disabled=self.page == 1)
+        btn_prev = discord.ui.Button(
+            emoji="◀️",
+            style=discord.ButtonStyle.primary,
+            disabled=(self.page <= 1)
+        )
         btn_prev.callback = self.prev_page
 
-        btn_next = discord.ui.Button(emoji="▶️", style=discord.ButtonStyle.primary, disabled=self.page == self.total_pages)
+        btn_next = discord.ui.Button(
+            emoji="▶️",
+            style=discord.ButtonStyle.primary,
+            disabled=(self.page >= self.total_pages or len(self.proposals) == 0)
+        )
         btn_next.callback = self.next_page
 
         btn_back = discord.ui.Button(label="Main Menu", style=discord.ButtonStyle.danger, emoji="↩️")
@@ -501,9 +511,10 @@ class LegislativeFloorView(PrivateLayoutView):
         await interaction.response.edit_message(view=self)
 
     async def back_to_dashboard(self, interaction: discord.Interaction):
+        await interaction.response.defer()
         await self.parent_view.initialise_data()
         self.parent_view.build_layout()
-        await interaction.response.edit_message(view=self.parent_view)
+        await interaction.edit_original_response(view=self.parent_view)
 
     async def manage_proposal(self, interaction: discord.Interaction, proposal: Dict[str, Any]):
         """Transfers interaction focus to specialized operations for a single proposal."""
