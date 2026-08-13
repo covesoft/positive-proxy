@@ -83,9 +83,7 @@ bot = BeaconAutoShardedBot(
     version_file="VERSION.txt",
     accent_colour=discord.Colour.from_rgb(112, 206, 24),
     secure_mode=False,
-    shard_count=2,
     on_shard_ready_callback=on_shard_ready,
-    proxy=proxy
 )
 
 if __name__ == "__main__":
