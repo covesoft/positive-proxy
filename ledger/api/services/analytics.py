@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
+# file: /positive-proxy/ledger/api/services/analytics.py
 
 from uuid import UUID
 
@@ -22,30 +23,30 @@ async def calculate_gini_coefficient(db: AsyncSession, proposal_id: UUID = None)
         FROM positive_proxy.users u
         WHERE u.is_active = TRUE;
     """)
-    
+
     result = await db.execute(weight_query, {"proposal_id": proposal_id})
     weights = [float(row[1]) for row in result.fetchall()]
-    
+
     n = len(weights)
     if n <= 1 or sum(weights) == 0:
         return {"gini_coefficient": 0.0, "status": "nominal"}
-        
+
     # 2. Compute the standard Gini formula math
     weights.sort()
     sum_of_absolute_differences = sum(
         abs(x - y) for i, x in enumerate(weights) for j, y in enumerate(weights)
     )
     sum_of_weights = sum(weights)
-    
+
     gini = sum_of_absolute_differences / (2 * n * sum_of_weights)
-    
+
     # 3. Categorize warning flags
     status = "nominal"
     if gini >= 0.7:
         status = "critical_oligarchy_warning"
     elif gini >= 0.4:
         status = "soft_oligarchy_warning"
-        
+
     return {
         "gini_coefficient": round(gini, 4),
         "total_tracked_electorate": n,
@@ -69,9 +70,9 @@ async def detect_proxy_loops(db: AsyncSession) -> list[dict]:
                 FALSE AS is_cycle
             FROM positive_proxy.proxies
             WHERE revoked_at IS NULL
-            
+
             UNION ALL
-            
+
             -- Step: Append connections and flag if a node repeats
             SELECT 
                 p.grantor_id, 
@@ -86,17 +87,17 @@ async def detect_proxy_loops(db: AsyncSession) -> list[dict]:
         FROM graph_tracker 
         WHERE is_cycle = TRUE;
     """)
-    
+
     result = await db.execute(loop_query)
     loops = result.fetchall()
-    
+
     flagged_loops = []
     for loop in loops:
         flagged_loops.append({
             "message": "Circular delegation chain detected",
             "chain_path": loop[0]
         })
-        
+
     return flagged_loops
 
 ### EOF: /positive-proxy/ledger/api/services/analytics.py ###

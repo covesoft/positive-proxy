@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
+# file: /positive-proxy/ledger/api/routers/proposals.py
 
 from uuid import UUID
 
@@ -73,7 +74,7 @@ async def create_proposal(
         for issue_id in proposal_data.issue_ids:
             junction = ProposalIssue(proposal_id=new_proposal.proposal_id, issue_id=issue_id)
             db.add(junction)
-        
+
     await db.commit()
     await db.refresh(new_proposal)
     return new_proposal
@@ -91,7 +92,7 @@ async def fork_proposal(parent_id: UUID, author_id: UUID, fork_title: str, db: A
     parent = await db.get(Proposal, parent_id)
     if not parent:
         raise HTTPException(status_code=404, detail="Parent proposal not found")
-        
+
     forked_proposal = Proposal(
         parent_id=parent_id,
         author_id=author_id,
@@ -114,7 +115,7 @@ async def add_or_edit_section(proposal_id: UUID, section_data: SectionEdit, user
         raise HTTPException(status_code=400, detail="Cannot alter text unless the proposal is an active draft")
 
     v_hash = compute_section_hash(section_data.content)
-    
+
     new_section = BillSection(
         proposal_id=proposal_id,
         section_number=section_data.section_number,
@@ -164,13 +165,13 @@ async def trace_vote(proposal_id: UUID, user_id: UUID, db: AsyncSession = Depend
         SELECT step, proxy_holder_name, final_vote 
         FROM positive_proxy.track_my_vote(:user_id, :proposal_id);
     """)
-    
+
     result = await db.execute(query, {"user_id": user_id, "proposal_id": proposal_id})
     rows = result.fetchall()
-    
+
     if not rows:
         return {"message": "No proxy chain or votes found for this user on this proposal."}
-    
+
     chain = []
     for row in rows:
         chain.append({
@@ -178,7 +179,7 @@ async def trace_vote(proposal_id: UUID, user_id: UUID, db: AsyncSession = Depend
             "proxy_holder": row[1],
             "vote_cast": row[2] if row[2] else "No ballot cast yet (delegated)"
         })
-        
+
     return {"proposal_id": proposal_id, "origin_voter_id": user_id, "chain": chain}
 
 
@@ -202,7 +203,7 @@ async def read_proxy_volume(proposal_id: UUID, user_id: UUID, db: AsyncSession =
     """)
     result = await db.execute(query, {"user_id": user_id, "proposal_id": proposal_id})
     row = result.fetchone()
-    
+
     return {
         "proposal_id": proposal_id,
         "representative_id": user_id,

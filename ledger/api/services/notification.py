@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
+# file: /positive-proxy/ledger/api/services/notification.py
 
 # This module acts as the "Civic Engagement Sentinel." Its most important job
 #  is enforcing the democratic fallback safety net: if a citizen has assigned a proxy,
@@ -55,20 +56,20 @@ async def check_proxy_action_alerts(db: AsyncSession, user_id: UUID) -> list[dic
 
     result = await db.execute(query, {"voter_id": user_id})
     rows = result.fetchall()
-    
+
     alerts = []
     seen_proposals = set()
-    
+
     for row in rows:
         proposal_id, title, vote_choice, proxy_name, depth = row
-        
+
         # Since the query is ordered by depth, the first row per proposal id 
         # is the closest active proxy whose vote actually dictates the current fallback state.
         if proposal_id in seen_proposals:
             continue
-            
+
         seen_proposals.add(proposal_id)
-        
+
         alerts.append({
             "proposal_id": proposal_id,
             "title": title,
@@ -76,7 +77,7 @@ async def check_proxy_action_alerts(db: AsyncSession, user_id: UUID) -> list[dic
             "message": f"Your delegate '{proxy_name}' (at depth {depth}) has cast a '{vote_choice}' on this bill.",
             "action_required": "Review choice. You may submit a direct ballot to completely override this action."
         })
-        
+
     return alerts
 
 ### EOF: /positive-proxy/ledger/api/services/notification.py ###

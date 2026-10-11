@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
+# file: /positive-proxy/ledger/api/models/models.py
 
 from datetime import datetime, timezone
 from typing import Optional
@@ -107,7 +108,7 @@ class Proposal(Base):
     author: Mapped["User"] = relationship(back_populates="proposals")
     children: Mapped[list["Proposal"]] = relationship("Proposal", back_populates="parent")
     parent: Mapped[Optional["Proposal"]] = relationship("Proposal", back_populates="children", remote_side=[proposal_id])
-    
+
     issues: Mapped[list["Issue"]] = relationship(
         secondary="positive_proxy.proposal_issues", back_populates="proposals"
     )

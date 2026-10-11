@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
+# file: /positive-proxy/clients/discord/api_client.py
 
 from typing import Any
 from uuid import UUID
@@ -11,6 +12,8 @@ import httpx
 # bot.proxy_api = PositiveProxyClient(base_url="http://localhost:8000")
 
 class PositiveProxyClient:
+    __slots__: tuple[str, ...] = ("base_url",)
+
     def __init__(self, base_url: str = "http://127.0.0.1:8000"):
         """
         Initializes the async API client wrapper to connect Discord to the Ledger Backend.
@@ -22,14 +25,14 @@ class PositiveProxyClient:
         async with httpx.AsyncClient() as client:
             url = f"{self.base_url}{endpoint}"
             response = await client.request(method, url, **kwargs)
-            
+
             if response.status_code >= 400:
                 try:
                     error_detail = response.json().get("detail", response.text)
                 except Exception:
                     error_detail = response.text
                 raise Exception(f"Backend API Error ({response.status_code}): {error_detail}")
-                
+
             return response.json()
 
     # =========================================================================

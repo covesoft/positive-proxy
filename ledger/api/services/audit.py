@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
+# file: /positive-proxy/ledger/api/services/audit.py
 
 import hashlib
 from datetime import datetime, timezone
@@ -24,7 +25,7 @@ async def generate_state_snapshot_hash(db: AsyncSession) -> dict:
     )
     result = await db.execute(query)
     section_hashes = result.scalars().all()
-    
+
     if not section_hashes:
         # Return an initial genesis seed hash if the database is brand new
         genesis_hash = hashlib.sha256(b"positive_proxy_genesis_block_2026").hexdigest()
@@ -33,14 +34,14 @@ async def generate_state_snapshot_hash(db: AsyncSession) -> dict:
             "total_sections_verified": 0,
             "master_state_hash": genesis_hash
         }
-        
+
     # 2. Hash the concatenated stream of all individual version strings
     hasher = hashlib.sha256()
     for v_hash in section_hashes:
         hasher.update(v_hash.encode('utf-8'))
-        
+
     master_hash = hasher.hexdigest()
-    
+
     return {
         "snapshot_timestamp": datetime.now(timezone.utc),
         "total_sections_verified": len(section_hashes),
@@ -61,16 +62,16 @@ async def verify_proposal_integrity(db: AsyncSession, proposal_id: UUID) -> dict
     )
     result = await db.execute(query)
     sections = result.scalars().all()
-    
+
     if not sections:
         return {"proposal_id": proposal_id, "integrity_status": "empty_or_not_found", "corrupted_sections": []}
-        
+
     corrupted_sections = []
-    
+
     # Verify that the text matches the stored checksum hash exactly
     for sec in sections:
         calculated_hash = hashlib.sha256(sec.content.strip().encode('utf-8')).hexdigest()
-        
+
         if calculated_hash != sec.version_hash:
             corrupted_sections.append({
                 "section_id": sec.section_id,
@@ -78,9 +79,9 @@ async def verify_proposal_integrity(db: AsyncSession, proposal_id: UUID) -> dict
                 "expected_hash": sec.version_hash,
                 "calculated_actual_hash": calculated_hash
             })
-            
+
     is_valid = len(corrupted_sections) == 0
-    
+
     return {
         "proposal_id": proposal_id,
         "integrity_status": "verified_authentic" if is_valid else "compromised",

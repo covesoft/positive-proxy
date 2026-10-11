@@ -13,6 +13,8 @@ PORT = int(os.environ.get("PORT", MONITOR_PORT))
 
 
 class StatusMonitor(commands.Cog):
+    __slots__: tuple[str, ...] = ("bot", "port", "app", "runner", "site", "server_task")
+
     def __init__(self, bot):
         self.bot = bot
         self.port = PORT

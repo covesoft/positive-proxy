@@ -19,6 +19,8 @@ logger = logging.getLogger("PositiveProxy")
 # ==========================================
 
 class PositiveProxyClient:
+    __slots__: tuple[str, ...] = ("base_url", "timeout")
+
     """Asynchronous client wrapping httpx for communicating with the Python policy engine."""
     def __init__(self, base_url: str = "http://localhost:8000"):
         self.base_url = base_url
@@ -117,6 +119,8 @@ class PositiveProxyClient:
 # ==========================================
 
 class VoterDashboardView(PrivateLayoutView):
+    __slots__: tuple[str, ...] = ("cog", "client", "alert_data", "pending_actions", "message")
+
     """
     The central navigation hub for voters. Realises real-time Alerts, 
     Pending Action metrics, and manages direct onboarding on the ledger.
@@ -186,7 +190,7 @@ class VoterDashboardView(PrivateLayoutView):
         # Render Urgency Metrics
         crit_count = len(self.pending_actions.get("critical", []))
         info_count = len(self.pending_actions.get("informational", []))
-        
+
         container.add_item(discord.ui.TextDisplay(f"🚨 **Critical Actions Required**: `{crit_count}`"))
         container.add_item(discord.ui.TextDisplay(f"ℹ️ **Override Opportunities**: `{info_count}`"))
         container.add_item(discord.ui.Separator())
@@ -201,7 +205,7 @@ class VoterDashboardView(PrivateLayoutView):
                 ))
         else:
             container.add_item(discord.ui.TextDisplay("✨ *Your proxies are in perfect alignment. No active sentinel overrides required.*"))
-        
+
         container.add_item(discord.ui.Separator())
 
         # Navigation Controls
@@ -245,6 +249,8 @@ class VoterDashboardView(PrivateLayoutView):
 # ==========================================
 
 class ProxyWorkspaceView(PrivateLayoutView):
+    __slots__: tuple[str, ...] = ("cog", "parent_view", "is_transferable")
+
     """
     Manages global or proposal-targeted proxy mappings.
     Empowers users to toggle transitivity locks (transferable vs strict).
@@ -314,6 +320,8 @@ class ProxyWorkspaceView(PrivateLayoutView):
         await interaction.response.edit_message(view=self.parent_view)
 
 class DelegateSelectView(PrivateLayoutView):
+    __slots__: tuple[str, ...] = ("user_select", "cog", "transferable", "parent_view")
+
     def __init__(self, user: discord.Member | discord.User, cog, transferable:bool, parent_view: ProxyWorkspaceView):
         super().__init__(user, timeout=180)
         self.user_select = None
@@ -380,6 +388,8 @@ class DelegateSelectView(PrivateLayoutView):
 # ==========================================
 
 class LegislativeFloorView(PrivateLayoutView):
+    __slots__: tuple[str, ...] = ("proposals", "cog", "parent_view", "page", "per_page", "total_pages")
+
     """
     Paginated legislative ledger displaying active drafts and bills.
     Supports in-place section inspection, direct overrides, and path traces.
@@ -512,6 +522,8 @@ class LegislativeFloorView(PrivateLayoutView):
 # ==========================================
 
 class ProposalInspectorView(PrivateLayoutView):
+    __slots__: tuple[str, ...] = ("proposal", "cog", "parent_view")
+
     """
     Sub-view dashboard for managing a single proposal draft or bill.
     Supports casting override votes, path tracing, and structural forks.
@@ -670,6 +682,8 @@ class ProposalInspectorView(PrivateLayoutView):
 # ==========================================
 
 class AuditStationView(PrivateLayoutView):
+    __slots__: tuple[str, ...] = ("cog", "parent_view")
+
     """
     Exposes advanced cryptographic ledger verification tools, master system
     block-hash auditing, and mathematical evaluations of representative distribution.
@@ -712,7 +726,7 @@ class AuditStationView(PrivateLayoutView):
             snapshot = await self.cog.api_client.get_audit_snapshot()
             master_hash = snapshot.get("master_block_hash", "Unavailable")
             total_items = snapshot.get("processed_items", 0)
-            
+
             embed = discord.Embed(
                 title="🔒 Cryptographic Snapshot Audit",
                 color=discord.Color.green(),
@@ -734,7 +748,7 @@ class AuditStationView(PrivateLayoutView):
             gini = 0.34
 
         status_text = "Highly Distributed" if gini < 0.3 else "Moderately Centralised" if gini < 0.6 else "Severely Oligarchic"
-        
+
         embed = discord.Embed(
             title="📊 Democratic Concentration Analysis",
             color=discord.Color.blue(),
@@ -752,6 +766,8 @@ class AuditStationView(PrivateLayoutView):
 # ==========================================
 
 class PositiveProxyCog(commands.Cog):
+    __slots__: tuple[str, ...] = ("bot", "api_client", "id_map")
+
     """
     The Positive Proxy Discord Command Extension.
     Coordinates database clients, registers event loops, and exposes 
@@ -771,12 +787,12 @@ class PositiveProxyCog(commands.Cog):
     async def launch_dashboard(self, ctx: commands.Context):
         """Entry command to initialise and render the primary state dashboard."""
         await ctx.defer(ephemeral=True)
-        
+
         # Instantiate and populate the central state representation dashboard
         view = VoterDashboardView(self, ctx.author)
         await view.initialise_data()
         view.build_layout()
-        
+
         # Store message handles for automated timeouts
         message = await ctx.send(view=view, ephemeral=True)
         view.message = message  # Optional: kept for future timeouts

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
+# file: /positive-proxy/ledger/api/routers/users.py
 
 import uuid
 from datetime import datetime, timezone
@@ -61,12 +62,12 @@ async def assign_proxy(user_id: UUID, proxy_data: ProxyCreate, db: AsyncSession 
     grantor = await db.get(User, user_id)
     if not grantor or not grantor.is_active:
         raise HTTPException(status_code=404, detail="Granting user not found or inactive")
-        
+
     # 2. Verify proxy target exists
     proxy_target = await db.get(User, proxy_data.proxy_to_id)
     if not proxy_target or not proxy_target.is_active:
         raise HTTPException(status_code=404, detail="Proxy target user not found or inactive")
-        
+
     # 3. Prevent self-delegation
     if user_id == proxy_data.proxy_to_id:
         raise HTTPException(status_code=400, detail="You cannot delegate your vote to yourself")
@@ -79,7 +80,7 @@ async def assign_proxy(user_id: UUID, proxy_data: ProxyCreate, db: AsyncSession 
     )
     existing_proxy_result = await db.execute(existing_proxy_query)
     active_proxy = existing_proxy_result.scalar_one_or_none()
-    
+
     if active_proxy:
         active_proxy.revoked_at = datetime.now(timezone.utc)
 
@@ -90,7 +91,7 @@ async def assign_proxy(user_id: UUID, proxy_data: ProxyCreate, db: AsyncSession 
         proposal_id=proxy_data.proposal_id,
         is_transferable=proxy_data.is_transferable
     )
-    
+
     db.add(new_proxy)
     await db.commit()
     await db.refresh(new_proxy)
