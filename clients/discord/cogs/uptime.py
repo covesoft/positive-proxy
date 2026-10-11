@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Joel Spector
+
 import discord
 from discord.ext import commands
 from aiohttp import web
