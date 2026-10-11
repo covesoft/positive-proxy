@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select, func
 from uuid import UUID
 
-from ledger.api.models.models import User
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 async def calculate_gini_coefficient(db: AsyncSession, proposal_id: UUID = None) -> dict:
     """

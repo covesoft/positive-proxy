@@ -3,11 +3,13 @@
 
 import hashlib
 from datetime import datetime, timezone
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
 from uuid import UUID
 
-from ledger.api.models.models import BillSection, Proposal
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ledger.api.models.models import BillSection
+
 
 async def generate_state_snapshot_hash(db: AsyncSession) -> dict:
     """

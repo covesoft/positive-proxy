@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ledger.api.database import get_db
-from ledger.api.services.audit import generate_state_snapshot_hash, verify_proposal_integrity
+from ledger.api.services.audit import (
+    generate_state_snapshot_hash,
+    verify_proposal_integrity,
+)
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 

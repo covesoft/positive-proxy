@@ -7,10 +7,11 @@
 #  immediately flag an alert. This gives the voter an explicit window to step in and
 #  execute a direct-vote override before the legislative floor closes.
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 from uuid import UUID
-from typing import List
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 async def check_proxy_action_alerts(db: AsyncSession, user_id: UUID) -> list[dict]:
     """

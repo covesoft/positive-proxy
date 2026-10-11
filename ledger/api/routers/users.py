@@ -1,21 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
 
+import uuid
+from datetime import datetime, timezone
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from uuid import UUID
-from datetime import datetime, timezone
 
 # Database connection dependency
 from ledger.api.database import get_db
 
 # Pydantic schemas and SQLAlchemy models
-from ledger.api.models.models import User, Proxy, UserStatusLog
-from ledger.api.schemas.schemas import UserCreate, UserResponse, ProxyCreate, ProxyResponse
+from ledger.api.models.models import Proxy, User
+from ledger.api.schemas.schemas import (
+    ProxyCreate,
+    ProxyResponse,
+    UserCreate,
+    UserResponse,
+)
 from ledger.api.services.governance import get_pending_action_items
 from ledger.api.services.notification import check_proxy_action_alerts
-import uuid
 
 router = APIRouter(prefix="/users", tags=["users"])
 

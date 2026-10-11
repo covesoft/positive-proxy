@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
 
-from pydantic_settings import BaseSettings
-import dotenv
 from pathlib import Path
+
+import dotenv
+from pydantic_settings import BaseSettings
 
 base_dir = Path(__file__).resolve().parent
 env_path = str(base_dir / ".env")

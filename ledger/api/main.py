@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from ledger.api.database import initialize_db_schema
-from ledger.api.routers import users, proposals, audit
+from ledger.api.routers import audit, proposals, users
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

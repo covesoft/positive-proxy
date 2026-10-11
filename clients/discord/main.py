@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
 
-from beacon import BeaconAutoShardedBot
-import discord
+import asyncio
 import logging
-from logging.handlers import RotatingFileHandler
-from config import TOKEN, LOGGING_DEBUG_MODE, PROXY_USERNAME, PROXY_PASSWORD
 import os
 import traceback
-import asyncio
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import discord
+from beacon import BeaconAutoShardedBot
+from config import LOGGING_DEBUG_MODE, PROXY_PASSWORD, PROXY_USERNAME, TOKEN
 
 if not TOKEN:
     raise SystemExit("ERROR: Set DISCORD_TOKEN in a .env in root folder.")

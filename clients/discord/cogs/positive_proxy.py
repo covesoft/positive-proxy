@@ -3,12 +3,13 @@
 
 import asyncio
 import logging
-from typing import Optional, List, Dict, Any, Union
+from typing import Any
+
 import discord
-from discord.ext import commands
 import httpx
-from config import BASE_URL
 from beacon import PrivateLayoutView, PrivateView
+from config import BASE_URL
+from discord.ext import commands
 
 # Configure logger
 logger = logging.getLogger("PositiveProxy")
@@ -23,7 +24,7 @@ class PositiveProxyClient:
         self.base_url = base_url
         self.timeout = httpx.Timeout(10.0, connect=5.0)
 
-    async def _request(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
+    async def _request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
         """Executes API requests using exponential backoff retry cycles."""
         url = f"{self.base_url}{path}"
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -38,18 +39,18 @@ class PositiveProxyClient:
                     return response.json()
                 except (httpx.RequestError, httpx.HTTPStatusError) as e:
                     if attempt == retries - 1:
-                        logger.error(f"API request failed permanently: {method} {url} - {str(e)}")
+                        logger.error(f"API request failed permanently: {method} {url} - {e!s}")
                         raise e
                     await asyncio.sleep(delay)
                     delay *= 2.0
             raise httpx.RequestError("Failed to communicate with proxy backend ledger.")
 
-    async def register_user(self, user_id: int, username: str) -> Dict[str, Any]:
+    async def register_user(self, user_id: int, username: str) -> dict[str, Any]:
         # Keep user_id as an int here, since the onboarding route can use it as a seeding parameter
         payload = {"user_id": str(user_id), "username": username[:100]}
         return await self._request("POST", "/users/", json=payload)
 
-    async def set_proxy(self, user_id: str, target_user_id: str, proposal_id: Optional[str] = None, is_transferable: bool = True) -> Dict[str, Any]:
+    async def set_proxy(self, user_id: str, target_user_id: str, proposal_id: str | None = None, is_transferable: bool = True) -> dict[str, Any]:
         # Updated user_id and target_user_id type-hints to str
         payload = {
             "target_user_id": target_user_id,
@@ -58,15 +59,15 @@ class PositiveProxyClient:
         }
         return await self._request("POST", f"/users/{user_id}/proxy", json=payload)
 
-    async def get_pending_actions(self, user_id: str) -> Dict[str, Any]:
+    async def get_pending_actions(self, user_id: str) -> dict[str, Any]:
         # Updated user_id type-hint to str
         return await self._request("GET", f"/users/{user_id}/pending-actions")
 
-    async def get_alerts(self, user_id: str) -> Dict[str, Any]:
+    async def get_alerts(self, user_id: str) -> dict[str, Any]:
         # Updated user_id type-hint to str
         return await self._request("GET", f"/users/{user_id}/alerts")
 
-    async def create_proposal(self, title: str, summary: str, issue_ids: List[str], parent_id: Optional[str] = None) -> Dict[str, Any]:
+    async def create_proposal(self, title: str, summary: str, issue_ids: list[str], parent_id: str | None = None) -> dict[str, Any]:
         payload = {
             "title": title,
             "summary": summary,
@@ -75,7 +76,7 @@ class PositiveProxyClient:
         }
         return await self._request("POST", "/proposals/", json=payload)
 
-    async def append_section(self, proposal_id: str, section_number: int, title: str, content: str) -> Dict[str, Any]:
+    async def append_section(self, proposal_id: str, section_number: int, title: str, content: str) -> dict[str, Any]:
         payload = {
             "section_number": section_number,
             "title": title,
@@ -83,10 +84,10 @@ class PositiveProxyClient:
         }
         return await self._request("POST", f"/proposals/{proposal_id}/sections", json=payload)
 
-    async def declare_bill(self, proposal_id: str) -> Dict[str, Any]:
+    async def declare_bill(self, proposal_id: str) -> dict[str, Any]:
         return await self._request("POST", f"/proposals/{proposal_id}/declare-bill")
 
-    async def cast_ballot(self, proposal_id: str, voter_id: str, choice: str) -> Dict[str, Any]:
+    async def cast_ballot(self, proposal_id: str, voter_id: str, choice: str) -> dict[str, Any]:
         # Updated voter_id type-hint to str
         payload = {
             "voter_id": voter_id,
@@ -94,21 +95,21 @@ class PositiveProxyClient:
         }
         return await self._request("POST", f"/proposals/{proposal_id}/ballot", json=payload)
 
-    async def trace_path(self, proposal_id: str, user_id: str) -> Dict[str, Any]:
+    async def trace_path(self, proposal_id: str, user_id: str) -> dict[str, Any]:
         # Updated user_id type-hint to str
         return await self._request("GET", f"/proposals/{proposal_id}/trace/{user_id}")
 
-    async def get_turnout(self, proposal_id: str) -> Dict[str, Any]:
+    async def get_turnout(self, proposal_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/proposals/{proposal_id}/turnout")
 
-    async def get_proxy_volume(self, proposal_id: str, representative_id: str) -> Dict[str, Any]:
+    async def get_proxy_volume(self, proposal_id: str, representative_id: str) -> dict[str, Any]:
         # Updated representative_id type-hint to str
         return await self._request("GET", f"/proposals/{proposal_id}/proxy-volume/{representative_id}")
 
-    async def get_audit_snapshot(self) -> Dict[str, Any]:
+    async def get_audit_snapshot(self) -> dict[str, Any]:
         return await self._request("GET", "/audit/snapshot")
 
-    async def verify_proposal_ledger(self, proposal_id: str) -> Dict[str, Any]:
+    async def verify_proposal_ledger(self, proposal_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/audit/proposal/{proposal_id}/verify")
 
 # ==========================================
@@ -124,8 +125,8 @@ class VoterDashboardView(PrivateLayoutView):
         super().__init__(user, timeout=None)
         self.cog = cog
         self.client = cog.api_client
-        self.alert_data: List[Dict[str, Any]] = []
-        self.pending_actions: Dict[str, Any] = {"critical": [], "informational": []}
+        self.alert_data: list[dict[str, Any]] = []
+        self.pending_actions: dict[str, Any] = {"critical": [], "informational": []}
         self.message = None
 
     async def initialise_data(self):
@@ -169,7 +170,7 @@ class VoterDashboardView(PrivateLayoutView):
                 self.pending_actions = actions_response if actions_response else {"critical": [], "informational": []}
 
         except Exception as e:
-            logger.error(f"Error initializing dashboard metrics for {self.user.id}: {str(e)}")
+            logger.error(f"Error initializing dashboard metrics for {self.user.id}: {e!s}")
 
     def build_layout(self):
         self.clear_items()
@@ -370,7 +371,7 @@ class DelegateSelectView(PrivateLayoutView):
 
         except Exception as e:
             await interaction.followup.send(
-                f"❌ Failed to submit delegation path to ledger: {str(e)}",
+                f"❌ Failed to submit delegation path to ledger: {e!s}",
                 ephemeral=True
             )
 
@@ -388,7 +389,7 @@ class LegislativeFloorView(PrivateLayoutView):
         super().__init__(user, timeout=None)
         self.cog = cog
         self.parent_view = parent_view
-        self.proposals: List[Dict[str, Any]] = []
+        self.proposals: list[dict[str, Any]] = []
         self.page = 1
         self.per_page = 3
         self.total_pages = 1
@@ -451,7 +452,7 @@ class LegislativeFloorView(PrivateLayoutView):
                     style=discord.ButtonStyle.secondary,
                 )
 
-                async def manage_callback(interaction: discord.Interaction, p: Dict[str, Any] = prop):
+                async def manage_callback(interaction: discord.Interaction, p: dict[str, Any] = prop):
                     await self.manage_proposal(interaction, p)
 
                 btn_manage.callback = manage_callback
@@ -500,7 +501,7 @@ class LegislativeFloorView(PrivateLayoutView):
         self.parent_view.build_layout()
         await interaction.edit_original_response(view=self.parent_view)
 
-    async def manage_proposal(self, interaction: discord.Interaction, proposal: Dict[str, Any]):
+    async def manage_proposal(self, interaction: discord.Interaction, proposal: dict[str, Any]):
         """Transfers interaction focus to specialized operations for a single proposal."""
         view = ProposalInspectorView(self.cog, self.user, proposal, parent_view=self)
         view.build_layout()
@@ -515,7 +516,7 @@ class ProposalInspectorView(PrivateLayoutView):
     Sub-view dashboard for managing a single proposal draft or bill.
     Supports casting override votes, path tracing, and structural forks.
     """
-    def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, proposal: Dict[str, Any], parent_view: LegislativeFloorView):
+    def __init__(self, cog: "PositiveProxyCog", user: discord.Member | discord.User, proposal: dict[str, Any], parent_view: LegislativeFloorView):
         super().__init__(user, timeout=None)
         self.cog = cog
         self.proposal = proposal
@@ -583,7 +584,7 @@ class ProposalInspectorView(PrivateLayoutView):
                     ephemeral=True
                 )
             except Exception as e:
-                await inter.response.send_message(f"❌ Failed to commit ballot to database ledger: {str(e)}", ephemeral=True)
+                await inter.response.send_message(f"❌ Failed to commit ballot to database ledger: {e!s}", ephemeral=True)
 
         yea_btn = discord.ui.Button(label="Yea", style=discord.ButtonStyle.success)
         yea_btn.callback = lambda interaction: vote_callback(interaction, "yea")
@@ -625,7 +626,7 @@ class ProposalInspectorView(PrivateLayoutView):
 
             await interaction.response.send_message(trace_output, ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ Failed to trace delegation route: {str(e)}", ephemeral=True)
+            await interaction.response.send_message(f"❌ Failed to trace delegation route: {e!s}", ephemeral=True)
 
     async def promote_to_bill(self, interaction: discord.Interaction):
         prop_id = self.proposal.get("id")
@@ -643,7 +644,7 @@ class ProposalInspectorView(PrivateLayoutView):
                 ephemeral=True
             )
         except Exception as e:
-            await interaction.response.send_message(f"❌ State promotion failed: {str(e)}", ephemeral=True)
+            await interaction.response.send_message(f"❌ State promotion failed: {e!s}", ephemeral=True)
 
     async def fork_proposal(self, interaction: discord.Interaction):
         """Forks a copy of the existing document, establishing a clear line-by-line historical lineage."""
@@ -662,7 +663,7 @@ class ProposalInspectorView(PrivateLayoutView):
                 ephemeral=True
             )
         except Exception as e:
-            await interaction.response.send_message(f"❌ Fork cloning operation failed: {str(e)}", ephemeral=True)
+            await interaction.response.send_message(f"❌ Fork cloning operation failed: {e!s}", ephemeral=True)
 
 # ==========================================
 # 4. CRYPTOGRAPHIC AUDITING & SYSTEM HEALTH
@@ -719,7 +720,7 @@ class AuditStationView(PrivateLayoutView):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ Audit engine verification mismatch: {str(e)}", ephemeral=True)
+            await interaction.response.send_message(f"❌ Audit engine verification mismatch: {e!s}", ephemeral=True)
 
     async def calculate_gini(self, interaction: discord.Interaction):
         """Calculates representative voting power distribution metrics (Gini Coefficient)."""
@@ -761,7 +762,7 @@ class PositiveProxyCog(commands.Cog):
         # Core API integration client directed towards running FastAPI loop
         url = BASE_URL
         self.api_client = PositiveProxyClient(base_url=url)
-        self.id_map: Dict[int, str] = {}
+        self.id_map: dict[int, str] = {}
 
     @commands.hybrid_command(
         name="dashboard",

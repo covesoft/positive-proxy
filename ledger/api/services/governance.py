@@ -4,10 +4,12 @@
 import hashlib
 from datetime import datetime, timezone
 from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select, func, update, insert
 
-from ledger.api.models.models import User, Proposal, BillSection, Proxy, Ballot
+from sqlalchemy import func, select, text, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ledger.api.models.models import Proposal, User
+
 
 def compute_section_hash(content: str) -> str:
     """Generates a git-like hash for line-item tracking."""

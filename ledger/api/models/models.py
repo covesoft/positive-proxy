@@ -2,11 +2,20 @@
 # SPDX-FileCopyrightText: 2026 Joel Spector
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
-import uuid_utils as uuid7  # Run `pip install uuid-utils` for high-performance UUIDv7 generation
 
-from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, Integer, UniqueConstraint, CheckConstraint
+import uuid_utils as uuid7  # Run `pip install uuid-utils` for high-performance UUIDv7 generation
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -25,10 +34,10 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
-    status_logs: Mapped[List["UserStatusLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    created_issues: Mapped[List["Issue"]] = relationship(back_populates="creator")
-    proposals: Mapped[List["Proposal"]] = relationship(back_populates="author")
-    ballots: Mapped[List["Ballot"]] = relationship(back_populates="voter")
+    status_logs: Mapped[list["UserStatusLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    created_issues: Mapped[list["Issue"]] = relationship(back_populates="creator")
+    proposals: Mapped[list["Proposal"]] = relationship(back_populates="author")
+    ballots: Mapped[list["Ballot"]] = relationship(back_populates="voter")
 
 
 # 1.1 USER STATUS LOG
@@ -58,7 +67,7 @@ class Issue(Base):
 
     # Relationships
     creator: Mapped["User"] = relationship(back_populates="created_issues")
-    proposals: Mapped[List["Proposal"]] = relationship(
+    proposals: Mapped[list["Proposal"]] = relationship(
         secondary="positive_proxy.proposal_issues", back_populates="issues"
     )
 
@@ -87,23 +96,23 @@ class Proposal(Base):
     )
 
     proposal_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7.uuid7)
-    parent_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("positive_proxy.proposals.proposal_id"), nullable=True)
+    parent_id: Mapped[UUID | None] = mapped_column(ForeignKey("positive_proxy.proposals.proposal_id"), nullable=True)
     author_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
     title: Mapped[str] = mapped_column(String(1024), nullable=False)  # Bamped to 1024 characters
     status: Mapped[str] = mapped_column(String(50), default="draft")
-    declared_bill_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    declared_bill_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     author: Mapped["User"] = relationship(back_populates="proposals")
-    children: Mapped[List["Proposal"]] = relationship("Proposal", back_populates="parent")
+    children: Mapped[list["Proposal"]] = relationship("Proposal", back_populates="parent")
     parent: Mapped[Optional["Proposal"]] = relationship("Proposal", back_populates="children", remote_side=[proposal_id])
     
-    issues: Mapped[List["Issue"]] = relationship(
+    issues: Mapped[list["Issue"]] = relationship(
         secondary="positive_proxy.proposal_issues", back_populates="proposals"
     )
-    sections: Mapped[List["BillSection"]] = relationship(back_populates="proposal", cascade="all, delete-orphan")
-    ballots: Mapped[List["Ballot"]] = relationship(back_populates="proposal", cascade="all, delete-orphan")
+    sections: Mapped[list["BillSection"]] = relationship(back_populates="proposal", cascade="all, delete-orphan")
+    ballots: Mapped[list["Ballot"]] = relationship(back_populates="proposal", cascade="all, delete-orphan")
 
 
 # 4. LINE-ITEM BILL SECTIONS (Git-like evolution)
@@ -119,7 +128,7 @@ class BillSection(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     version_hash: Mapped[str] = mapped_column(String(64), nullable=False) # SHA-256
     updated_by: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
-    parent_section_id: Mapped[Optional[UUID]] = mapped_column(nullable=True)
+    parent_section_id: Mapped[UUID | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
@@ -134,12 +143,12 @@ class Proxy(Base):
     proxy_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7.uuid7)
     grantor_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
     proxy_to_id: Mapped[UUID] = mapped_column(ForeignKey("positive_proxy.users.user_id"))
-    proposal_id: Mapped[Optional[UUID]] = mapped_column(
+    proposal_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("positive_proxy.proposals.proposal_id", ondelete="CASCADE"), nullable=True
     ) # NULL implies a Global Fallback proxy
     is_transferable: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # 6. BALLOTS TABLE (Ensures one vote per person per bill)

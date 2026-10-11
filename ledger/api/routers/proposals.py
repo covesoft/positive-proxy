@@ -1,15 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Joel Spector
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
 from uuid import UUID
-from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ledger.api.database import get_db
-from ledger.api.models.models import Issue, Proposal, ProposalIssue, BillSection, Ballot
-from ledger.api.schemas.schemas import IssueCreate, SectionEdit, BallotCast, ProposalCreate, ProposalResponse
+from ledger.api.models.models import Ballot, BillSection, Issue, Proposal, ProposalIssue
+from ledger.api.schemas.schemas import (
+    BallotCast,
+    IssueCreate,
+    ProposalCreate,
+    ProposalResponse,
+    SectionEdit,
+)
 from ledger.api.services.governance import compute_section_hash, get_voter_turnout
 
 router = APIRouter(prefix="/proposals", tags=["proposals"])
