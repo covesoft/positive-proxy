@@ -12,28 +12,28 @@ import httpx
 # bot.proxy_api = PositiveProxyClient(base_url="http://localhost:8000")
 
 class PositiveProxyClient:
-    __slots__: tuple[str, ...] = ("base_url",)
+    __slots__: tuple[str, ...] = ("base_url", "client")
 
     def __init__(self, base_url: str = "http://127.0.0.1:8000"):
         """
         Initializes the async API client wrapper to connect Discord to the Ledger Backend.
         """
         self.base_url = base_url.rstrip("/")
+        self.client = httpx.AsyncClient()
 
     async def _request(self, method: str, endpoint: str, **kwargs) -> Any:
         """Internal helper to manage async requests and error handling safely."""
-        async with httpx.AsyncClient() as client:
-            url = f"{self.base_url}{endpoint}"
-            response = await client.request(method, url, **kwargs)
+        url = f"{self.base_url}{endpoint}"
+        response = await self.client.request(method, url, **kwargs)
 
-            if response.status_code >= 400:
-                try:
-                    error_detail = response.json().get("detail", response.text)
-                except Exception:
-                    error_detail = response.text
-                raise Exception(f"Backend API Error ({response.status_code}): {error_detail}")
+        if response.status_code >= 400:
+            try:
+                error_detail = response.json().get("detail", response.text)
+            except Exception:
+                error_detail = response.text
+            raise Exception(f"Backend API Error ({response.status_code}): {error_detail}")
 
-            return response.json()
+        return response.json()
 
     # =========================================================================
     # USER & PROXY ENDPOINTS
@@ -140,5 +140,9 @@ class PositiveProxyClient:
     async def verify_proposal_integrity(self, proposal_id: UUID) -> dict[str, Any]:
         """Maps to GET /audit/proposal/{id}/verify - Runs deep anti-tampering verification."""
         return await self._request("GET", f"/audit/proposal/{proposal_id}/verify")
+
+    async def close(self) -> None:
+        """Closes the client."""
+        await self.client.aclose()
 
 ### EOF: /positive-proxy/clients/discord/api_client.py ###

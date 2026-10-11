@@ -19,33 +19,32 @@ logger = logging.getLogger("PositiveProxy")
 # ==========================================
 
 class PositiveProxyClient:
-    __slots__: tuple[str, ...] = ("base_url", "timeout")
+    __slots__: tuple[str, ...] = ("base_url", "client")
 
     """Asynchronous client wrapping httpx for communicating with the Python policy engine."""
     def __init__(self, base_url: str = "http://localhost:8000"):
         self.base_url = base_url
-        self.timeout = httpx.Timeout(10.0, connect=5.0)
+        self.client = httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0))
 
     async def _request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
         """Executes API requests using exponential backoff retry cycles."""
         url = f"{self.base_url}{path}"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            retries = 5
-            delay = 1.0
-            for attempt in range(retries):
-                try:
-                    response = await client.request(method, url, **kwargs)
-                    if response.status_code >= 500:
-                        raise httpx.HTTPStatusError("Server Error", request=response.request, response=response)
-                    response.raise_for_status()
-                    return response.json()
-                except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                    if attempt == retries - 1:
-                        logger.error(f"API request failed permanently: {method} {url} - {e!s}")
-                        raise e
-                    await asyncio.sleep(delay)
-                    delay *= 2.0
-            raise httpx.RequestError("Failed to communicate with proxy backend ledger.")
+        retries = 5
+        delay = 1.0
+        for attempt in range(retries):
+            try:
+                response = await self.client.request(method, url, **kwargs)
+                if response.status_code >= 500:
+                    raise httpx.HTTPStatusError("Server Error", request=response.request, response=response)
+                response.raise_for_status()
+                return response.json()
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                if attempt == retries - 1:
+                    logger.error(f"API request failed permanently: {method} {url} - {e!s}")
+                    raise e
+                await asyncio.sleep(delay)
+                delay *= 2.0
+        raise httpx.RequestError("Failed to communicate with proxy backend ledger.")
 
     async def register_user(self, user_id: int, username: str) -> dict[str, Any]:
         # Keep user_id as an int here, since the onboarding route can use it as a seeding parameter
@@ -113,6 +112,9 @@ class PositiveProxyClient:
 
     async def verify_proposal_ledger(self, proposal_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/audit/proposal/{proposal_id}/verify")
+
+    async def close(self) -> None:
+        await self.client.aclose()
 
 # ==========================================
 # 1. USER PROFILE & THE DEMOCRATIC DASHBOARD
@@ -796,6 +798,10 @@ class PositiveProxyCog(commands.Cog):
         # Store message handles for automated timeouts
         message = await ctx.send(view=view, ephemeral=True)
         view.message = message  # Optional: kept for future timeouts
+
+    async def cog_unload(self):
+        """Unloads the cog."""
+        await self.api_client.close()
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PositiveProxyCog(bot))
