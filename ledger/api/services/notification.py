@@ -1,20 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Joel Spector
 # file: /positive-proxy/ledger/api/services/notification.py
-copyright = """
-    Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
-    Copyright (C) 2026  Joel Spector
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>."""
 
 # This module acts as the "Civic Engagement Sentinel." Its most important job
 #  is enforcing the democratic fallback safety net: if a citizen has assigned a proxy,
@@ -22,10 +8,11 @@ copyright = """
 #  immediately flag an alert. This gives the voter an explicit window to step in and
 #  execute a direct-vote override before the legislative floor closes.
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 from uuid import UUID
-from typing import List
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 async def check_proxy_action_alerts(db: AsyncSession, user_id: UUID) -> list[dict]:
     """
@@ -69,20 +56,20 @@ async def check_proxy_action_alerts(db: AsyncSession, user_id: UUID) -> list[dic
 
     result = await db.execute(query, {"voter_id": user_id})
     rows = result.fetchall()
-    
+
     alerts = []
     seen_proposals = set()
-    
+
     for row in rows:
         proposal_id, title, vote_choice, proxy_name, depth = row
-        
+
         # Since the query is ordered by depth, the first row per proposal id 
         # is the closest active proxy whose vote actually dictates the current fallback state.
         if proposal_id in seen_proposals:
             continue
-            
+
         seen_proposals.add(proposal_id)
-        
+
         alerts.append({
             "proposal_id": proposal_id,
             "title": title,
@@ -90,7 +77,7 @@ async def check_proxy_action_alerts(db: AsyncSession, user_id: UUID) -> list[dic
             "message": f"Your delegate '{proxy_name}' (at depth {depth}) has cast a '{vote_choice}' on this bill.",
             "action_required": "Review choice. You may submit a direct ballot to completely override this action."
         })
-        
+
     return alerts
 
 ### EOF: /positive-proxy/ledger/api/services/notification.py ###

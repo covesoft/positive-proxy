@@ -1,28 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Joel Spector
 # file: /positive-proxy/ledger/api/services/governance.py
-copyright = """
-    Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
-    Copyright (C) 2026  Joel Spector
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>."""
 
 import hashlib
 from datetime import datetime, timezone
 from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select, func, update, insert
 
-from ledger.api.models.models import User, Proposal, BillSection, Proxy, Ballot
+from sqlalchemy import func, select, text, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ledger.api.models.models import Proposal, User
+
 
 def compute_section_hash(content: str) -> str:
     """Generates a git-like hash for line-item tracking."""
@@ -43,7 +31,7 @@ async def create_proposal_fork(db: AsyncSession, parent_proposal_id: UUID, autho
     )
     db.add(new_proposal)
     await db.flush()  # Populates new_proposal.proposal_id utilizing UUIDv7 generator
-    
+
     # 2. Asynchronously copy line-item sections from parent
     copy_query = text("""
         INSERT INTO positive_proxy.bill_sections (section_id, proposal_id, section_number, content, version_hash, updated_by, parent_section_id, created_at)
@@ -51,14 +39,14 @@ async def create_proposal_fork(db: AsyncSession, parent_proposal_id: UUID, autho
         FROM positive_proxy.bill_sections 
         WHERE proposal_id = :parent_id;
     """)
-    
+
     await db.execute(copy_query, {
         "new_id": new_proposal.proposal_id,
         "author_id": author_id,
         "parent_id": parent_proposal_id,
         "now": datetime.now(timezone.utc)
     })
-    
+
     await db.commit()
     return new_proposal.proposal_id
 
@@ -72,7 +60,7 @@ async def check_oligarchy_cap(db: AsyncSession, proxy_holder_id: UUID, max_perce
     total_query = select(func.count()).select_from(User).where(User.is_active == True)
     total_result = await db.execute(total_query)
     total_electorate = total_result.scalar_one() or 0
-    
+
     if total_electorate == 0:
         return True
 
@@ -81,19 +69,19 @@ async def check_oligarchy_cap(db: AsyncSession, proxy_holder_id: UUID, max_perce
         WITH RECURSIVE total_influence AS (
             SELECT grantor_id FROM positive_proxy.proxies 
             WHERE proxy_to_id = :holder_id AND revoked_at IS NULL
-            
+
             UNION
-            
+
             SELECT p.grantor_id FROM positive_proxy.proxies p
             JOIN total_influence ti ON p.proxy_to_id = ti.grantor_id
             WHERE p.revoked_at IS NULL AND p.is_transferable = TRUE
         )
         SELECT COUNT(*) + 1 AS proxy_weight FROM total_influence;
     """)
-    
+
     weight_result = await db.execute(influence_query, {"holder_id": proxy_holder_id})
     weight = weight_result.scalar_one() or 1
-    
+
     cap_limit = total_electorate * max_percentage
     return weight <= cap_limit
 
@@ -119,16 +107,16 @@ async def calculate_bill_tally(db: AsyncSession, proposal_id: UUID) -> dict:
     users_query = select(User.user_id).where(User.is_active == True)
     users_result = await db.execute(users_query)
     voters = users_result.scalars().all()
-    
+
     results = {"yea": 0, "nay": 0, "abstain": 0, "uncast": 0}
-    
+
     # Recursive loop walking the stack for each citizen
     tally_query = text("""
         WITH RECURSIVE proxy_chain AS (
             SELECT :voter_id::uuid AS current_voter, 0 AS depth, ARRAY[:voter_id::uuid] AS path, TRUE AS transferable
-            
+
             UNION ALL
-            
+
             SELECT p.proxy_to_id, pc.depth + 1, pc.path || p.proxy_to_id, p.is_transferable
             FROM proxy_chain pc
             JOIN positive_proxy.proxies p ON pc.current_voter = p.grantor_id
@@ -143,16 +131,16 @@ async def calculate_bill_tally(db: AsyncSession, proposal_id: UUID) -> dict:
         ORDER BY pc.depth ASC
         LIMIT 1;
     """)
-    
+
     for voter_id in voters:
         vote_result = await db.execute(tally_query, {"voter_id": voter_id, "proposal_id": proposal_id})
         vote = vote_result.scalar_one_or_none()
-        
+
         if vote:
             results[vote] += 1
         else:
             results["uncast"] += 1
-            
+
     return results
 
 async def get_voter_turnout(db: AsyncSession, proposal_id: UUID) -> dict:
@@ -164,16 +152,16 @@ async def get_voter_turnout(db: AsyncSession, proposal_id: UUID) -> dict:
     total_query = select(func.count()).select_from(User).where(User.is_active == True)
     total_result = await db.execute(total_query)
     total_electorate = total_result.scalar_one() or 0
-    
+
     if total_electorate == 0:
         return {"total_electorate": 0, "cast_ballots": 0, "turnout_percentage": 0.0}
 
     # 2. Leverage our tally function calculation to find cast vs uncast breakdown
     tally_results = await calculate_bill_tally(db, proposal_id)
-    
+
     cast_ballots = tally_results["yea"] + tally_results["nay"] + tally_results["abstain"]
     turnout_percentage = round((cast_ballots / total_electorate) * 100, 2)
-    
+
     return {
         "total_electorate": total_electorate,
         "cast_ballots": cast_ballots,
@@ -190,16 +178,16 @@ async def get_pending_action_items(db: AsyncSession, user_id: UUID) -> list[dict
     bills_query = select(Proposal).where(Proposal.status == "bill")
     bills_result = await db.execute(bills_query)
     active_bills = bills_result.scalars().all()
-    
+
     pending_items = []
-    
+
     # 2. Trace the proxy chain logic statement per active bill
     action_check_query = text("""
         WITH RECURSIVE proxy_chain AS (
             SELECT :voter_id::uuid AS current_voter, 0 AS depth, ARRAY[:voter_id::uuid] AS path, TRUE AS transferable
-            
+
             UNION ALL
-            
+
             SELECT p.proxy_to_id, pc.depth + 1, pc.path || p.proxy_to_id, p.is_transferable
             FROM proxy_chain pc
             JOIN positive_proxy.proxies p ON pc.current_voter = p.grantor_id
@@ -217,19 +205,19 @@ async def get_pending_action_items(db: AsyncSession, user_id: UUID) -> list[dict
              WHERE b.proposal_id = :proposal_id
              ORDER BY pc.depth ASC LIMIT 1) as chain_vote;
     """)
-    
+
     for bill in active_bills:
         result = await db.execute(action_check_query, {"voter_id": user_id, "proposal_id": bill.proposal_id})
         status_row = result.fetchone()
-        
+
         if status_row:
             voted_directly = status_row[0]
             chain_vote = status_row[1]
-            
+
             # If they voted directly, it's not pending action
             if voted_directly:
                 continue
-                
+
             # If neither they nor their proxies have voted, it's a critical action item
             if not chain_vote:
                 pending_items.append({
@@ -246,7 +234,7 @@ async def get_pending_action_items(db: AsyncSession, user_id: UUID) -> list[dict
                     "urgency": "informational",
                     "message": f"Your proxy chain has provisionally cast a '{chain_vote}'. You can still override this."
                 })
-                
+
     return pending_items
 
 ### EOF: /positive-proxy/ledger/api/services/governance.py ###

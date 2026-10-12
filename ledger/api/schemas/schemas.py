@@ -1,26 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Joel Spector
 # file: /positive-proxy/ledger/api/schemas/schemas.py
-copyright = """
-    Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
-    Copyright (C) 2026  Joel Spector
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>."""
+from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, Field
-from uuid import UUID
-from datetime import datetime
-from typing import Optional, List
-
 
 
 # --- USER SCHEMAS ---
@@ -43,17 +28,17 @@ class UserResponse(UserBase):
 # --- PROXY SCHEMAS ---
 class ProxyCreate(BaseModel):
     proxy_to_id: UUID
-    proposal_id: Optional[UUID] = None  # None sets it as a global proxy
+    proposal_id: UUID | None = None  # None sets it as a global proxy
     is_transferable: bool = True
 
 class ProxyResponse(BaseModel):
     proxy_id: UUID
     grantor_id: UUID
     proxy_to_id: UUID
-    proposal_id: Optional[UUID]
+    proposal_id: UUID | None
     is_transferable: bool
     created_at: datetime
-    revoked_at: Optional[datetime]
+    revoked_at: datetime | None
 
     class Config:
         from_attributes = True
@@ -99,15 +84,15 @@ class IssueResponse(BaseModel):
 class ProposalCreate(BaseModel):
     title: str = Field(..., max_length=1024, description="The name of the working draft or proposed bill.")
     issue_ids: list[UUID] = Field(default=[], description="Links this proposal to one or many tracked issues.")
-    parent_id: Optional[UUID] = Field(default=None, description="Populated only if this proposal is a fork of another bill.")
+    parent_id: UUID | None = Field(default=None, description="Populated only if this proposal is a fork of another bill.")
 
 class ProposalResponse(BaseModel):
     proposal_id: UUID
-    parent_id: Optional[UUID]
+    parent_id: UUID | None
     author_id: UUID
     title: str
     status: str
-    declared_bill_at: Optional[datetime]
+    declared_bill_at: datetime | None
     created_at: datetime
 
     class Config:
@@ -120,7 +105,7 @@ class BillSectionCreate(BaseModel):
     section_number: int
     content: str
     updated_by: UUID
-    parent_section_id: Optional[UUID] = None
+    parent_section_id: UUID | None = None
 
 class BillSectionResponse(BaseModel):
     section_id: UUID
@@ -129,7 +114,7 @@ class BillSectionResponse(BaseModel):
     content: str
     version_hash: str
     updated_by: UUID
-    parent_section_id: Optional[UUID]
+    parent_section_id: UUID | None
     created_at: datetime
 
     class Config:

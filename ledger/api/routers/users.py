@@ -1,36 +1,28 @@
-# File: /positive-proxy/ledger/api/routers/users.py
-copyright = """
-    Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
-    Copyright (C) 2026  Joel Spector
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Joel Spector
+# file: /positive-proxy/ledger/api/routers/users.py
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>."""
+import uuid
+from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from uuid import UUID
-from datetime import datetime, timezone
 
 # Database connection dependency
 from ledger.api.database import get_db
 
 # Pydantic schemas and SQLAlchemy models
-from ledger.api.models.models import User, Proxy, UserStatusLog
-from ledger.api.schemas.schemas import UserCreate, UserResponse, ProxyCreate, ProxyResponse
+from ledger.api.models.models import Proxy, User
+from ledger.api.schemas.schemas import (
+    ProxyCreate,
+    ProxyResponse,
+    UserCreate,
+    UserResponse,
+)
 from ledger.api.services.governance import get_pending_action_items
 from ledger.api.services.notification import check_proxy_action_alerts
-import uuid
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -70,12 +62,12 @@ async def assign_proxy(user_id: UUID, proxy_data: ProxyCreate, db: AsyncSession 
     grantor = await db.get(User, user_id)
     if not grantor or not grantor.is_active:
         raise HTTPException(status_code=404, detail="Granting user not found or inactive")
-        
+
     # 2. Verify proxy target exists
     proxy_target = await db.get(User, proxy_data.proxy_to_id)
     if not proxy_target or not proxy_target.is_active:
         raise HTTPException(status_code=404, detail="Proxy target user not found or inactive")
-        
+
     # 3. Prevent self-delegation
     if user_id == proxy_data.proxy_to_id:
         raise HTTPException(status_code=400, detail="You cannot delegate your vote to yourself")
@@ -88,7 +80,7 @@ async def assign_proxy(user_id: UUID, proxy_data: ProxyCreate, db: AsyncSession 
     )
     existing_proxy_result = await db.execute(existing_proxy_query)
     active_proxy = existing_proxy_result.scalar_one_or_none()
-    
+
     if active_proxy:
         active_proxy.revoked_at = datetime.now(timezone.utc)
 
@@ -99,7 +91,7 @@ async def assign_proxy(user_id: UUID, proxy_data: ProxyCreate, db: AsyncSession 
         proposal_id=proxy_data.proposal_id,
         is_transferable=proxy_data.is_transferable
     )
-    
+
     db.add(new_proxy)
     await db.commit()
     await db.refresh(new_proxy)

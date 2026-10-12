@@ -1,32 +1,16 @@
-# file: /positive-proxy/clients/discord/main.py
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Joel Spector
 
-copyright = """
-    Positive Proxy is a bill-making and voting system that allows voters to pass their ballot to trusted parties to vote on their behalf.
-    Copyright (C) 2026  Joel Spector
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>."""
-
-from beacon import BeaconAutoShardedBot
-import discord
+import asyncio
 import logging
-from logging.handlers import RotatingFileHandler
-from config import TOKEN, LOGGING_DEBUG_MODE, PROXY_USERNAME, PROXY_PASSWORD
 import os
 import traceback
-import asyncio
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import discord
+from beacon import BeaconAutoShardedBot
+from config import LOGGING_DEBUG_MODE, PROXY_PASSWORD, PROXY_USERNAME, TOKEN
 
 if not TOKEN:
     raise SystemExit("ERROR: Set DISCORD_TOKEN in a .env in root folder.")
